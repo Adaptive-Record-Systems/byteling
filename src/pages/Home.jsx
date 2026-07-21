@@ -1,11 +1,13 @@
 import React, { useEffect, useState, useCallback } from 'react';
+import { Link } from 'react-router-dom';
 import { base44 } from '@/api/base44Client';
 import {
   Github, Activity, MessageSquare, Loader2, CheckCircle2,
-  Link2, Unlink, AlertTriangle
+  Link2, Unlink, AlertTriangle, Sparkles
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
+import ApiKeyCard from '@/components/ApiKeyCard';
 
 // Decodes the ?github=<status> value the oauth callback appends when it
 // bounces the browser back here. Keep these in sync with the status codes in
@@ -28,6 +30,7 @@ export default function Home() {
   const [connecting, setConnecting] = useState(false);
   const [banner, setBanner] = useState(null);
   const [error, setError] = useState(null);
+  const [providerKey, setProviderKey] = useState(null);
 
   const runPing = async () => {
     setPinging(true);
@@ -180,6 +183,21 @@ export default function Home() {
             {error && <p className="text-sm text-destructive">{error}</p>}
           </CardContent>
         </Card>
+
+        {/* Bring-your-own Anthropic key */}
+        <div className="mb-6">
+          <ApiKeyCard onChange={setProviderKey} />
+        </div>
+
+        {/* Open chat when both are ready */}
+        {connection && providerKey?.status === 'active' && (
+          <Button asChild className="w-full mb-6 h-11">
+            <Link to="/chat">
+              <Sparkles className="w-4 h-4 mr-2" />
+              Open Byteling chat
+            </Link>
+          </Button>
+        )}
 
         {/* Backend health */}
         <Card>
