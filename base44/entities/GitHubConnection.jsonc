@@ -1,22 +1,37 @@
 {
   "name": "GitHubConnection",
   "type": "object",
+  "description": "An account-level GitHub OAuth grant. Created only by the github-oauth-callback function under the service role. Repo selection happens afterwards, per Session.",
   "properties": {
+    "owner_email": {
+      "type": "string",
+      "description": "Email of the Base44 user this connection belongs to. Set explicitly by the callback, which runs under the service role and therefore cannot rely on created_by."
+    },
+    "owner_id": {
+      "type": "string",
+      "description": "Base44 user id of the owner"
+    },
     "github_username": {
       "type": "string",
       "description": "GitHub login of the user who authorized this connection"
     },
-    "repo_full_name": {
-      "type": "string",
-      "description": "Full GitHub repo name (owner/repo) this connection grants access to"
+    "github_user_id": {
+      "type": "number",
+      "description": "Numeric GitHub user id. Stable across username changes, so this is the real identity key."
     },
     "scope": {
       "type": "string",
-      "description": "OAuth scopes granted (e.g. repo)"
+      "description": "OAuth scopes actually granted by GitHub, as returned by the token exchange"
     },
     "access_token": {
       "type": "string",
-      "description": "Server-side OAuth access token. RLS-restricted to the owning user; never exposed to other users."
+      "description": "Server-side OAuth access token. Never leaves the backend.",
+      // Field-level lockout: no client can read or write this, not even the
+      // owning user. Only service-role calls from backend functions see it.
+      "rls": {
+        "read": false,
+        "write": false
+      }
     },
     "token_type": {
       "type": "string",
@@ -32,14 +47,21 @@
     }
   },
   "required": [
+    "owner_email",
     "github_username",
-    "repo_full_name",
+    "github_user_id",
     "access_token"
   ],
-  "security": {
-    "read": "owner",
-    "create": "auth",
-    "update": "owner",
-    "delete": "owner"
+  // Connections are minted only by the OAuth callback (service role), so
+  // clients get read + delete (to disconnect) and nothing else.
+  "rls": {
+    "create": false,
+    "read": {
+      "owner_email": "{{user.email}}"
+    },
+    "update": false,
+    "delete": {
+      "owner_email": "{{user.email}}"
+    }
   }
 }
