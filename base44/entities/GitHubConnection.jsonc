@@ -54,14 +54,20 @@
   ],
   // Connections are minted only by the OAuth callback (service role), so
   // clients get read + delete (to disconnect) and nothing else.
+  //
+  // Custom fields are addressed under `data.` in RLS conditions (built-in
+  // fields like created_by are top-level; custom properties are not). Without
+  // the prefix the condition references a non-existent path and matches no
+  // rows — which silently hides every service-role-created connection from its
+  // own owner.
   "rls": {
     "create": false,
     "read": {
-      "owner_email": "{{user.email}}"
+      "data.owner_email": "{{user.email}}"
     },
     "update": false,
     "delete": {
-      "owner_email": "{{user.email}}"
+      "data.owner_email": "{{user.email}}"
     }
   }
 }
