@@ -1,7 +1,12 @@
 {
   "name": "Message",
   "type": "object",
+  "description": "Chat history tied to a session. user messages come from the frontend; assistant/system messages are written by backend functions under the service role — so ownership is tracked by owner_email, not created_by (which is null for service-role writes).",
   "properties": {
+    "owner_email": {
+      "type": "string",
+      "description": "Email of the Base44 user who owns the session this message belongs to. Set by the frontend for user messages and by the backend for assistant/system messages."
+    },
     "session_id": {
       "type": "string",
       "description": "Reference to the Session this message belongs to"
@@ -38,13 +43,23 @@
     }
   },
   "required": [
+    "owner_email",
     "session_id",
     "role"
   ],
-  "security": {
-    "read": "owner",
-    "create": "auth",
-    "update": "owner",
-    "delete": "owner"
+  // owner_email is custom, so RLS uses the `data.` path. Users create only their
+  // own messages; the backend writes assistant/system messages via the service
+  // role, which bypasses RLS. Messages are immutable to clients (no update).
+  "rls": {
+    "create": {
+      "data.owner_email": "{{user.email}}"
+    },
+    "read": {
+      "data.owner_email": "{{user.email}}"
+    },
+    "update": false,
+    "delete": {
+      "data.owner_email": "{{user.email}}"
+    }
   }
 }

@@ -1,7 +1,12 @@
 {
   "name": "ActivityLog",
   "type": "object",
+  "description": "Timestamped events used to trigger companion responses. Most events are detected and written by backend functions under the service role, so ownership is tracked by owner_email rather than created_by.",
   "properties": {
+    "owner_email": {
+      "type": "string",
+      "description": "Email of the Base44 user who owns the session this event belongs to. Set by whoever records the event (frontend or backend)."
+    },
     "session_id": {
       "type": "string",
       "description": "Reference to the Session this activity entry belongs to"
@@ -30,13 +35,22 @@
     }
   },
   "required": [
+    "owner_email",
     "session_id",
     "event_type"
   ],
-  "security": {
-    "read": "owner",
-    "create": "auth",
-    "update": "owner",
-    "delete": "owner"
+  // owner_email is custom, so RLS uses the `data.` path. Clients may log their
+  // own activity and read it back; the backend detects most events and updates
+  // `acknowledged` via the service role, which bypasses RLS. Log entries are not
+  // client-deletable — history should be immutable from the UI.
+  "rls": {
+    "create": {
+      "data.owner_email": "{{user.email}}"
+    },
+    "read": {
+      "data.owner_email": "{{user.email}}"
+    },
+    "update": false,
+    "delete": false
   }
 }
