@@ -38,6 +38,15 @@ export async function getConnection() {
   return rows.find((r) => r.status === 'active') || null;
 }
 
+export async function startGithubConnect(returnPath = '/') {
+  const res = await base44.functions.invoke('github-oauth-start', { return_path: returnPath });
+  return res.data.authorize_url;
+}
+
+export async function disconnectGithub(connectionId) {
+  return base44.entities.GitHubConnection.delete(connectionId);
+}
+
 // --- Repo reads ---
 
 export async function getRepoTree(repoFullName) {
