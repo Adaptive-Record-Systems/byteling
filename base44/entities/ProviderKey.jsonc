@@ -1,0 +1,62 @@
+{
+  "name": "ProviderKey",
+  "type": "object",
+  "description": "A user's own third-party model API key (bring-your-own-key). Each account that uses Byteling supplies its own key, so usage is billed to that user, not the app owner. Created only by the set-provider-key function under the service role; the key value is field-locked so no client ever reads it back.",
+  "properties": {
+    "owner_email": {
+      "type": "string",
+      "description": "Email of the Base44 user who owns this key. RLS keys off this."
+    },
+    "owner_id": {
+      "type": "string",
+      "description": "Base44 user id of the owner"
+    },
+    "provider": {
+      "type": "string",
+      "enum": [
+        "anthropic"
+      ],
+      "default": "anthropic",
+      "description": "Which model provider this key is for"
+    },
+    "api_key": {
+      "type": "string",
+      "description": "The raw provider API key. Never leaves the backend.",
+      "rls": {
+        "read": false,
+        "write": false
+      }
+    },
+    "key_hint": {
+      "type": "string",
+      "description": "Last 4 characters of the key, for display only (e.g. '…ab12'). Safe to show clients."
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "active",
+        "invalid"
+      ],
+      "default": "active",
+      "description": "Set to 'invalid' if the provider later rejects the key"
+    }
+  },
+  "required": [
+    "owner_email",
+    "provider",
+    "api_key"
+  ],
+  // owner_email is custom, so RLS addresses it under `data.`. Clients may read
+  // their own key's metadata (api_key stays hidden by field-level RLS) and
+  // delete it to disconnect; only the service role creates/updates it.
+  "rls": {
+    "create": false,
+    "read": {
+      "data.owner_email": "{{user.email}}"
+    },
+    "update": false,
+    "delete": {
+      "data.owner_email": "{{user.email}}"
+    }
+  }
+}
