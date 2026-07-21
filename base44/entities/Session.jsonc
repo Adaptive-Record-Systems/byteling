@@ -1,7 +1,12 @@
 {
   "name": "Session",
   "type": "object",
+  "description": "One session per connected repo: conversation state, linked repo, and the GitHubConnection that backs it. Owned by a user via owner_email (not created_by), so a backend function can create a session on the user's behalf and the user can still read it.",
   "properties": {
+    "owner_email": {
+      "type": "string",
+      "description": "Email of the Base44 user who owns this session. RLS keys off this so ownership survives service-role creation."
+    },
     "title": {
       "type": "string",
       "description": "Human-readable name for the session"
@@ -29,13 +34,24 @@
     }
   },
   "required": [
+    "owner_email",
     "repo_full_name",
     "github_connection_id"
   ],
-  "security": {
-    "read": "owner",
-    "create": "auth",
-    "update": "owner",
-    "delete": "owner"
+  // owner_email is a custom field, so RLS addresses it under `data.`. A user may
+  // only create sessions they own; service-role backend calls bypass RLS.
+  "rls": {
+    "create": {
+      "data.owner_email": "{{user.email}}"
+    },
+    "read": {
+      "data.owner_email": "{{user.email}}"
+    },
+    "update": {
+      "data.owner_email": "{{user.email}}"
+    },
+    "delete": {
+      "data.owner_email": "{{user.email}}"
+    }
   }
 }
