@@ -1,0 +1,50 @@
+{
+  "name": "Message",
+  "type": "object",
+  "properties": {
+    "session_id": {
+      "type": "string",
+      "description": "Reference to the Session this message belongs to"
+    },
+    "role": {
+      "type": "string",
+      "enum": [
+        "user",
+        "assistant",
+        "system"
+      ],
+      "description": "Who produced the message"
+    },
+    "content_type": {
+      "type": "string",
+      "enum": [
+        "text",
+        "image"
+      ],
+      "default": "text",
+      "description": "Whether this message is plain text or an image (screenshot)"
+    },
+    "text": {
+      "type": "string",
+      "description": "Message text content (when content_type is text)"
+    },
+    "image_url": {
+      "type": "string",
+      "description": "URL of an attached screenshot (when content_type is image)"
+    },
+    "sequence_number": {
+      "type": "number",
+      "description": "Monotonic per-session sequence number to keep ordering across clients"
+    }
+  },
+  "required": [
+    "session_id",
+    "role"
+  ],
+  "security": {
+    "read": "owner",
+    "create": "auth",
+    "update": "owner",
+    "delete": "owner"
+  }
+}

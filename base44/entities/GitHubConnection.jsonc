@@ -1,0 +1,45 @@
+{
+  "name": "GitHubConnection",
+  "type": "object",
+  "properties": {
+    "github_username": {
+      "type": "string",
+      "description": "GitHub login of the user who authorized this connection"
+    },
+    "repo_full_name": {
+      "type": "string",
+      "description": "Full GitHub repo name (owner/repo) this connection grants access to"
+    },
+    "scope": {
+      "type": "string",
+      "description": "OAuth scopes granted (e.g. repo)"
+    },
+    "access_token": {
+      "type": "string",
+      "description": "Server-side OAuth access token. RLS-restricted to the owning user; never exposed to other users."
+    },
+    "token_type": {
+      "type": "string",
+      "default": "bearer"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "active",
+        "revoked"
+      ],
+      "default": "active"
+    }
+  },
+  "required": [
+    "github_username",
+    "repo_full_name",
+    "access_token"
+  ],
+  "security": {
+    "read": "owner",
+    "create": "auth",
+    "update": "owner",
+    "delete": "owner"
+  }
+}

@@ -1,0 +1,42 @@
+{
+  "name": "ActivityLog",
+  "type": "object",
+  "properties": {
+    "session_id": {
+      "type": "string",
+      "description": "Reference to the Session this activity entry belongs to"
+    },
+    "event_type": {
+      "type": "string",
+      "enum": [
+        "fix_landed",
+        "error_occurred",
+        "idle_period",
+        "active_hours",
+        "late_night_activity",
+        "companion_response"
+      ],
+      "description": "The kind of activity event observed"
+    },
+    "event_data": {
+      "type": "object",
+      "description": "Structured details about the event (e.g. file touched, error message, duration)",
+      "additionalProperties": true
+    },
+    "acknowledged": {
+      "type": "boolean",
+      "default": false,
+      "description": "Whether the companion has already responded to this event"
+    }
+  },
+  "required": [
+    "session_id",
+    "event_type"
+  ],
+  "security": {
+    "read": "owner",
+    "create": "auth",
+    "update": "owner",
+    "delete": "owner"
+  }
+}

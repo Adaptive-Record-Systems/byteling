@@ -1,0 +1,41 @@
+{
+  "name": "Session",
+  "type": "object",
+  "properties": {
+    "title": {
+      "type": "string",
+      "description": "Human-readable name for the session"
+    },
+    "repo_full_name": {
+      "type": "string",
+      "description": "Full GitHub repo name (owner/repo) this session is connected to"
+    },
+    "github_connection_id": {
+      "type": "string",
+      "description": "Reference to the GitHubConnection holding the OAuth token for this repo"
+    },
+    "conversation_state": {
+      "type": "object",
+      "description": "Opaque conversation state blob (e.g. last processed message id, summary) managed by the assistant",
+      "additionalProperties": true
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "active",
+        "archived"
+      ],
+      "default": "active"
+    }
+  },
+  "required": [
+    "repo_full_name",
+    "github_connection_id"
+  ],
+  "security": {
+    "read": "owner",
+    "create": "auth",
+    "update": "owner",
+    "delete": "owner"
+  }
+}
