@@ -1,0 +1,46 @@
+{
+  "name": "OAuthState",
+  "type": "object",
+  "description": "Short-lived, single-use CSRF state bridging the authenticated OAuth start call and the unauthenticated GitHub redirect. The redirect carries no Base44 session, so this record is the only thing binding an incoming `code` to a user.",
+  "properties": {
+    "state": {
+      "type": "string",
+      "description": "Cryptographically random opaque value echoed back by GitHub as ?state="
+    },
+    "owner_email": {
+      "type": "string",
+      "description": "Email of the Base44 user who initiated the flow. The resulting connection is attributed to this user."
+    },
+    "owner_id": {
+      "type": "string",
+      "description": "Base44 user id of the initiator, kept alongside owner_email for stability if the email changes"
+    },
+    "expires_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Hard expiry; the callback rejects anything past this"
+    },
+    "consumed": {
+      "type": "boolean",
+      "default": false,
+      "description": "Set true before the token exchange so a replayed callback cannot reuse this state"
+    },
+    "return_path": {
+      "type": "string",
+      "description": "Relative app path to send the browser back to. Relative only - never a full URL, to avoid an open redirect."
+    }
+  },
+  "required": [
+    "state",
+    "owner_email",
+    "expires_at"
+  ],
+  // Fully closed to clients. Only backend functions running under the service
+  // role touch this entity; nothing here should ever be readable from a browser.
+  "rls": {
+    "create": false,
+    "read": false,
+    "update": false,
+    "delete": false
+  }
+}
