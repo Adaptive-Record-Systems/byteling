@@ -97,12 +97,13 @@ export async function loadMessages(sessionId) {
 
 // --- Chat ---
 
-export async function sendChat({ sessionId, message, repoFullName, context }) {
+export async function sendChat({ sessionId, message, repoFullName, context, repos }) {
   const res = await base44.functions.invoke('claude-chat', {
     session_id: sessionId,
     message,
     repo_full_name: repoFullName,
-    context
+    context,
+    repos
   });
-  return res.data; // { reply, session_id, sequence_number }
+  return res.data; // { reply, open_repo, session_id, sequence_number }
 }
