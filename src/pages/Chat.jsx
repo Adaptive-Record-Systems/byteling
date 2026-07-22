@@ -10,9 +10,10 @@ import { Badge } from '@/components/ui/badge';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
 import {
-  Sparkles, Loader2, Send, FileCode, Plus, X, GitBranch, AlertTriangle, Settings, FolderGit2,
+  Loader2, Send, FileCode, Plus, X, GitBranch, AlertTriangle, Settings, FolderGit2,
   GitPullRequest, ExternalLink
 } from 'lucide-react';
+import { Lantern, FlameMark, hueFromRepo } from '@/components/Lantern';
 
 const LAST_REPO_KEY = 'byteling_last_repo';
 const MAX_TREE_LINES = 1200;
@@ -32,16 +33,16 @@ const md = {
 function Aside({ children }) {
   return (
     <div className="self-center flex items-center gap-2 max-w-[90%] text-xs text-muted-foreground bg-primary/5 border border-primary/10 px-3 py-1.5 rounded-full">
-      <Sparkles className="w-3.5 h-3.5 text-primary shrink-0" />
+      <FlameMark className="text-base shrink-0" />
       <span className="font-serif">{children}</span>
     </div>
   );
 }
 
-function ByteAvatar() {
+function ByteAvatar({ hue = 42 }) {
   return (
-    <span className="w-6 h-6 rounded-md bg-primary/10 text-primary flex items-center justify-center shrink-0 mt-1">
-      <Sparkles className="w-3.5 h-3.5" />
+    <span className="w-6 h-6 rounded-md bg-primary/5 flex items-center justify-center shrink-0 mt-1">
+      <FlameMark className="text-base" hue={hue} />
     </span>
   );
 }
@@ -63,6 +64,23 @@ export default function Chat() {
   const [chatError, setChatError] = useState(null);
 
   const scrollRef = useRef(null);
+
+  // ── Lantern character ──────────────────────────────────────────────
+  // The flame reacts to real events (never a timer). `pulse` fires a one-shot
+  // reaction; `mood` is the steady state; the flame is tinted by the open repo.
+  const [pulse, setPulse] = useState(null);
+  const [idle, setIdle] = useState(false);
+  const pulseId = useRef(0);
+  const firePulse = (kind) => setPulse({ id: (pulseId.current += 1), kind });
+  const lanternHue = useMemo(() => hueFromRepo(repo?.full_name), [repo]);
+  const lanternMood = sending || loadingRepo ? 'thinking' : idle ? 'dim' : 'resting';
+
+  // Dim the flame once the user has been still for a while (deep in flow).
+  useEffect(() => {
+    setIdle(false);
+    const t = setTimeout(() => setIdle(true), 45000);
+    return () => clearTimeout(t);
+  }, [messages, sending, loadingRepo, repo]);
 
   useEffect(() => {
     getConnection().then(setConnection).catch(() => {});
@@ -92,6 +110,7 @@ export default function Chat() {
       setRepo({ full_name: full, tree, session });
       setContextFiles([]);
       localStorage.setItem(LAST_REPO_KEY, full);
+      firePulse('drift'); // flame reaches out to the newly opened repo
       if (!keepThread) {
         const prior = await loadMessages(session.id);
         setMessages(prior.map((m) => ({ role: m.role, text: m.text || '' })));
@@ -133,6 +152,7 @@ export default function Chat() {
     try {
       const res = await openPr({ repoFullName: repo.full_name, ...m.proposal });
       patchMessage(idx, { prResult: res, prPending: false, proposal: null });
+      firePulse('spark'); // a PR landed — bright celebratory flare
     } catch (e) {
       patchMessage(idx, { prError: errInfo(e).message, prPending: false });
     }
@@ -173,6 +193,7 @@ export default function Chat() {
       });
       if (res.reply || res.pr_proposal) {
         setMessages((prev) => [...prev, { role: 'assistant', text: res.reply || '', proposal: res.pr_proposal || null }]);
+        if (res.pr_proposal) firePulse('notice'); // flame leans in — a fix is on the table
       }
       if (res.open_repo) await loadRepo(res.open_repo, { keepThread: true });
     } catch (e) {
@@ -189,11 +210,17 @@ export default function Chat() {
 
   return (
     <div className="min-h-screen bg-background flex flex-col">
+      {/* The lantern hangs from the top edge — a presence you forget is there
+          until the moment you need the corner lit. It reacts to chat events. */}
+      <div className="fixed top-0 right-4 sm:right-8 z-20 pointer-events-none">
+        <Lantern mood={lanternMood} pulse={pulse} hue={lanternHue} />
+      </div>
+
       <div className="w-full max-w-3xl mx-auto px-4 py-4 flex-1 flex flex-col min-h-0">
         {/* Header */}
         <div className="flex items-center gap-2 mb-4">
-          <span className="w-7 h-7 rounded-lg bg-primary/10 text-primary flex items-center justify-center">
-            <Sparkles className="w-4 h-4" />
+          <span className="w-7 h-7 rounded-lg bg-primary/5 flex items-center justify-center text-lg">
+            <FlameMark hue={lanternHue ?? 42} />
           </span>
           <h1 className="text-lg font-heading font-bold">Byteling</h1>
 
@@ -289,7 +316,7 @@ export default function Chat() {
               </div>
             ) : (
               <div key={i} className="flex justify-start gap-2">
-                <ByteAvatar />
+                <ByteAvatar hue={lanternHue ?? 42} />
                 <div className="max-w-[85%] space-y-2">
                   {m.text && (
                     <div className="rounded-2xl rounded-bl-sm bg-muted text-foreground px-4 py-3 text-sm font-serif">
@@ -342,7 +369,7 @@ export default function Chat() {
           )}
           {(sending || loadingRepo) && (
             <div className="flex justify-start gap-2">
-              <ByteAvatar />
+              <ByteAvatar hue={lanternHue ?? 42} />
               <div className="rounded-2xl rounded-bl-sm bg-muted px-4 py-3">
                 <Loader2 className="w-4 h-4 animate-spin text-muted-foreground" />
               </div>
