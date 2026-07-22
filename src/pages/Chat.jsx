@@ -83,9 +83,17 @@ export default function Chat() {
     return () => clearTimeout(t);
   }, [messages, sending, loadingRepo, repo]);
 
+  // On load, restore the last-open repo so the conversation survives a reload —
+  // loadRepo pulls that repo's stored messages back in. The turns themselves are
+  // already persisted server-side per session.
   useEffect(() => {
-    getConnection().then(setConnection).catch(() => {});
+    getConnection().then((conn) => {
+      setConnection(conn);
+      const last = localStorage.getItem(LAST_REPO_KEY);
+      if (conn && last) loadRepo(last, { conn });
+    }).catch(() => {});
     listRepos().then(setRepos).catch(() => {});
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
@@ -99,15 +107,15 @@ export default function Chat() {
 
   // keepThread: keep the visible conversation (used when Byteling opens a repo
   // mid-chat); otherwise replace with that repo's own stored history.
-  const loadRepo = async (fullName, { keepThread = false } = {}) => {
+  const loadRepo = async (fullName, { keepThread = false, conn = connection } = {}) => {
     const full = (fullName || '').trim();
-    if (!full || !connection) return;
+    if (!full || !conn) return;
     setRepoPickerOpen(false);
     setLoadingRepo(true);
     setRepoError(null);
     try {
       const tree = await getRepoTree(full);
-      const session = await ensureSession(full, connection.id);
+      const session = await ensureSession(full, conn.id);
       setRepo({ full_name: full, tree, session });
       setContextFiles([]);
       localStorage.setItem(LAST_REPO_KEY, full);
