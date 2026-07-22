@@ -155,7 +155,7 @@ function LanternStyles() {
       .btl-flame-img {
         position: absolute;
         left: 50.5%; bottom: 30%;
-        width: 34%; height: auto;
+        width: 29%; height: auto;
         transform: translateX(-50%);
         transform-origin: 50% 100%;
         mix-blend-mode: screen;
