@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import ReactMarkdown from 'react-markdown';
 import {
-  getConnection, listRepos, getRepoTree, getRepoFiles, ensureSession, loadMessages, sendChat, errInfo
+  getConnection, listRepos, getRepoTree, getRepoFiles, ensureSession, loadMessages, sendChat, openPr, errInfo
 } from '@/api/byteling';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
@@ -10,7 +10,8 @@ import { Badge } from '@/components/ui/badge';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
 import {
-  Sparkles, Loader2, Send, FileCode, Plus, X, GitBranch, AlertTriangle, Settings, FolderGit2
+  Sparkles, Loader2, Send, FileCode, Plus, X, GitBranch, AlertTriangle, Settings, FolderGit2,
+  GitPullRequest, ExternalLink
 } from 'lucide-react';
 
 const LAST_REPO_KEY = 'byteling_last_repo';
@@ -122,6 +123,21 @@ export default function Chat() {
 
   const removeContextFile = (path) => setContextFiles((prev) => prev.filter((f) => f.path !== path));
 
+  const patchMessage = (idx, patch) =>
+    setMessages((prev) => prev.map((m, i) => (i === idx ? { ...m, ...patch } : m)));
+
+  const confirmPr = async (idx) => {
+    const m = messages[idx];
+    if (!m?.proposal || !repo) return;
+    patchMessage(idx, { prPending: true, prError: null });
+    try {
+      const res = await openPr({ repoFullName: repo.full_name, ...m.proposal });
+      patchMessage(idx, { prResult: res, prPending: false, proposal: null });
+    } catch (e) {
+      patchMessage(idx, { prError: errInfo(e).message, prPending: false });
+    }
+  };
+
   const buildContext = () => {
     if (!repo) return undefined;
     const paths = blobPaths.slice(0, MAX_TREE_LINES);
@@ -155,7 +171,9 @@ export default function Chat() {
         context: buildContext(),
         repos: repoList.map((r) => ({ full_name: r.full_name, description: r.description }))
       });
-      if (res.reply) setMessages((prev) => [...prev, { role: 'assistant', text: res.reply }]);
+      if (res.reply || res.pr_proposal) {
+        setMessages((prev) => [...prev, { role: 'assistant', text: res.reply || '', proposal: res.pr_proposal || null }]);
+      }
       if (res.open_repo) await loadRepo(res.open_repo, { keepThread: true });
     } catch (e) {
       const { message, code } = errInfo(e);
@@ -262,20 +280,66 @@ export default function Chat() {
           {messages.length === 0 && repo && (
             <Aside>Got {repo.full_name} open. Ask me anything about it.</Aside>
           )}
-          {messages.map((m, i) => (
-            <div key={i} className={m.role === 'user' ? 'flex justify-end' : 'flex justify-start gap-2'}>
-              {m.role === 'assistant' && <ByteAvatar />}
-              <div
-                className={
-                  m.role === 'user'
-                    ? 'max-w-[85%] rounded-2xl rounded-br-sm bg-primary text-primary-foreground px-4 py-2 text-sm whitespace-pre-wrap'
-                    : 'max-w-[85%] rounded-2xl rounded-bl-sm bg-muted text-foreground px-4 py-3 text-sm font-serif'
-                }
-              >
-                {m.role === 'user' ? m.text : <ReactMarkdown components={md}>{m.text}</ReactMarkdown>}
+          {messages.map((m, i) =>
+            m.role === 'user' ? (
+              <div key={i} className="flex justify-end">
+                <div className="max-w-[85%] rounded-2xl rounded-br-sm bg-primary text-primary-foreground px-4 py-2 text-sm whitespace-pre-wrap">
+                  {m.text}
+                </div>
               </div>
-            </div>
-          ))}
+            ) : (
+              <div key={i} className="flex justify-start gap-2">
+                <ByteAvatar />
+                <div className="max-w-[85%] space-y-2">
+                  {m.text && (
+                    <div className="rounded-2xl rounded-bl-sm bg-muted text-foreground px-4 py-3 text-sm font-serif">
+                      <ReactMarkdown components={md}>{m.text}</ReactMarkdown>
+                    </div>
+                  )}
+
+                  {m.prResult && (
+                    <a
+                      href={m.prResult.pr_url}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="flex items-center gap-2 rounded-lg border border-primary/20 bg-primary/5 px-3 py-2 text-sm text-foreground hover:bg-primary/10"
+                    >
+                      <GitPullRequest className="w-4 h-4 text-primary" />
+                      Opened PR #{m.prResult.number}
+                      <ExternalLink className="w-3.5 h-3.5 text-muted-foreground ml-auto" />
+                    </a>
+                  )}
+
+                  {m.proposal && !m.prResult && (
+                    <div className="rounded-lg border border-primary/20 bg-background/40 p-3">
+                      <div className="flex items-center gap-2 text-sm font-medium">
+                        <GitPullRequest className="w-4 h-4 text-primary" />
+                        {m.proposal.title}
+                      </div>
+                      <div className="text-xs text-muted-foreground mt-1 font-mono">
+                        {m.proposal.changes.length} file{m.proposal.changes.length > 1 ? 's' : ''}: {m.proposal.changes.map((c) => c.path).join(', ')}
+                      </div>
+                      {m.prError && <p className="text-xs text-destructive mt-2">{m.prError}</p>}
+                      <div className="flex gap-2 mt-3">
+                        <Button size="sm" onClick={() => confirmPr(i)} disabled={m.prPending}>
+                          {m.prPending ? (
+                            <Loader2 className="w-4 h-4 animate-spin" />
+                          ) : (
+                            <>
+                              <GitPullRequest className="w-4 h-4 mr-1.5" /> Open PR
+                            </>
+                          )}
+                        </Button>
+                        <Button size="sm" variant="ghost" onClick={() => patchMessage(i, { proposal: null })}>
+                          Dismiss
+                        </Button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )
+          )}
           {(sending || loadingRepo) && (
             <div className="flex justify-start gap-2">
               <ByteAvatar />
