@@ -42,6 +42,7 @@ const WINGS_OPEN = new Set(['thinking', 'drift', 'notice', 'spark']);
 export function Lantern({ mood = 'resting', pulse, hue = null, className = '', flameVideo = null, size = 160 }) {
   const [reaction, setReaction] = useState(null);
   const lastPulse = useRef(null);
+  const videoRef = useRef(null);
 
   useEffect(() => {
     if (!pulse || pulse.id === lastPulse.current) return;
@@ -50,6 +51,24 @@ export function Lantern({ mood = 'resting', pulse, hue = null, className = '', f
     const t = setTimeout(() => setReaction(null), REACTION_MS);
     return () => clearTimeout(t);
   }, [pulse]);
+
+  // Background tabs pause the flame video; a screen-blended <video> then shows
+  // a stale/torn frame on return. Resume + nudge a repaint when visible again.
+  useEffect(() => {
+    if (!flameVideo) return;
+    const kick = () => {
+      const v = videoRef.current;
+      if (!v || document.visibilityState !== 'visible') return;
+      const p = v.play();
+      if (p && p.catch) p.catch(() => {});
+    };
+    document.addEventListener('visibilitychange', kick);
+    window.addEventListener('focus', kick);
+    return () => {
+      document.removeEventListener('visibilitychange', kick);
+      window.removeEventListener('focus', kick);
+    };
+  }, [flameVideo]);
 
   // The flame carries a tint from the open repo; the art is blue (~200), so
   // that's the default and per-repo hues rotate the flame away from it.
@@ -74,6 +93,7 @@ export function Lantern({ mood = 'resting', pulse, hue = null, className = '', f
         <span className="btl-flame-glow" />
         {flameVideo ? (
           <video
+            ref={videoRef}
             className="btl-flame-img"
             src={flameVideo}
             poster={flameImg}
