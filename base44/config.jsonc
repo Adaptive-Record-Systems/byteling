@@ -2,7 +2,7 @@
   "name": "untitled",
   "site": {
     "installCommand": "npm install",
-    "buildCommand": "npm run build",
+    "buildCommand": "npm run build:all",
     "serveCommand": "npm run dev",
     "outputDirectory": "./dist"
   }
