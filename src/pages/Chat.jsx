@@ -220,7 +220,7 @@ export default function Chat() {
         {/* Header */}
         <div className="flex items-center gap-2 mb-4">
           <span className="w-7 h-7 rounded-lg bg-primary/5 flex items-center justify-center text-lg">
-            <FlameMark hue={lanternHue ?? 42} />
+            <FlameMark hue={lanternHue ?? 200} />
           </span>
           <h1 className="text-lg font-heading font-bold">Byteling</h1>
 
@@ -316,7 +316,7 @@ export default function Chat() {
               </div>
             ) : (
               <div key={i} className="flex justify-start gap-2">
-                <ByteAvatar hue={lanternHue ?? 42} />
+                <ByteAvatar hue={lanternHue ?? 200} />
                 <div className="max-w-[85%] space-y-2">
                   {m.text && (
                     <div className="rounded-2xl rounded-bl-sm bg-muted text-foreground px-4 py-3 text-sm font-serif">
@@ -369,7 +369,7 @@ export default function Chat() {
           )}
           {(sending || loadingRepo) && (
             <div className="flex justify-start gap-2">
-              <ByteAvatar hue={lanternHue ?? 42} />
+              <ByteAvatar hue={lanternHue ?? 200} />
               <div className="rounded-2xl rounded-bl-sm bg-muted px-4 py-3">
                 <Loader2 className="w-4 h-4 animate-spin text-muted-foreground" />
               </div>
