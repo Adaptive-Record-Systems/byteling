@@ -31,13 +31,13 @@ function EmbedApp({ hue, size }) {
   };
   return (
     <div
-      style={{ width: size, cursor: 'pointer', lineHeight: 0 }}
+      style={{ display: 'inline-block', cursor: 'pointer', lineHeight: 0 }}
       onClick={react}
       role="button"
       aria-label="Byteling"
       title="Byteling"
     >
-      <Lantern mood="resting" pulse={pulse} hue={hue} className="" />
+      <Lantern mood="resting" pulse={pulse} hue={hue} size={size} />
     </div>
   );
 }
@@ -51,7 +51,7 @@ class BytelingCompanion extends HTMLElement {
 
     const hueAttr = this.getAttribute('hue');
     const hue = hueAttr != null && hueAttr !== '' ? Number(hueAttr) : null;
-    const size = Number(this.getAttribute('size')) || 128;
+    const size = Number(this.getAttribute('size')) || 160;
 
     this._root = createRoot(mount);
     this._root.render(<EmbedApp hue={hue} size={size} />);

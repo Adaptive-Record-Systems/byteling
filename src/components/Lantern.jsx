@@ -39,7 +39,7 @@ import flameImg from '@/assets/lantern/flame.png';
 const REACTION_MS = 1600;
 const WINGS_OPEN = new Set(['thinking', 'drift', 'notice', 'spark']);
 
-export function Lantern({ mood = 'resting', pulse, hue = null, className = '', flameVideo = null }) {
+export function Lantern({ mood = 'resting', pulse, hue = null, className = '', flameVideo = null, size = 160 }) {
   const [reaction, setReaction] = useState(null);
   const lastPulse = useRef(null);
 
@@ -60,7 +60,7 @@ export function Lantern({ mood = 'resting', pulse, hue = null, className = '', f
   return (
     <div
       className={`btl-lantern btl-${state} ${wingsOpen ? 'btl-wings-open' : ''} ${className}`}
-      style={{ '--btl-hue': tint }}
+      style={{ '--btl-hue': tint, '--btl-size': typeof size === 'number' ? `${size}px` : size }}
       role="img"
       aria-label={`Byteling — ${reaction || mood}`}
     >
@@ -108,7 +108,7 @@ function LanternStyles() {
       .btl-lantern {
         position: relative;
         display: inline-block;
-        width: 128px;
+        width: var(--btl-size, 160px);
         aspect-ratio: 1 / 1;
         --glow: hsl(var(--btl-hue) 95% 62%);
         /* the flame art is blue (~200); per-repo hue rotates it away from blue */
