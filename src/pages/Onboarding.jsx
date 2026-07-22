@@ -81,7 +81,7 @@ export default function Onboarding({ onReady }) {
           <span className="w-9 h-9 rounded-lg bg-primary/10 text-primary flex items-center justify-center">
             <Sparkles className="w-5 h-5" />
           </span>
-          <h1 className="text-2xl font-heading font-bold">Hi, I&apos;m Byteling.</h1>
+          <h1 className="text-2xl font-heading font-bold">Hi, I&apos;m Byte-ling.</h1>
         </div>
         <p className="text-muted-foreground mb-8 ml-12">
           I read your GitHub repo and help you understand it, spot fixes, and open PRs.

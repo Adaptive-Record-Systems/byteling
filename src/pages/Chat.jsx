@@ -14,6 +14,7 @@ import {
   GitPullRequest, ExternalLink
 } from 'lucide-react';
 import { Lantern, FlameMark, hueFromRepo } from '@/components/Lantern';
+import flameVideo from '@/assets/lantern/Flame_idle.mp4';
 
 const LAST_REPO_KEY = 'byteling_last_repo';
 const MAX_TREE_LINES = 1200;
@@ -213,7 +214,7 @@ export default function Chat() {
       {/* The lantern hangs from the top edge — a presence you forget is there
           until the moment you need the corner lit. It reacts to chat events. */}
       <div className="fixed top-0 right-4 sm:right-8 z-20 pointer-events-none">
-        <Lantern mood={lanternMood} pulse={pulse} hue={lanternHue} />
+        <Lantern mood={lanternMood} pulse={pulse} hue={lanternHue} flameVideo={flameVideo} />
       </div>
 
       <div className="w-full max-w-3xl mx-auto px-4 py-4 flex-1 flex flex-col min-h-0">
@@ -222,7 +223,7 @@ export default function Chat() {
           <span className="w-7 h-7 rounded-lg bg-primary/5 flex items-center justify-center text-lg">
             <FlameMark hue={lanternHue ?? 200} />
           </span>
-          <h1 className="text-lg font-heading font-bold">Byteling</h1>
+          <h1 className="text-lg font-heading font-bold">Byte-ling</h1>
 
           <Popover open={repoPickerOpen} onOpenChange={setRepoPickerOpen}>
             <PopoverTrigger asChild>
@@ -382,7 +383,7 @@ export default function Chat() {
         {/* Composer — always available */}
         <div className="mt-3 flex items-end gap-2">
           <Textarea
-            placeholder={repo ? `Ask about ${repo.full_name}…` : 'Ask Byteling to open a repo, or describe one…'}
+            placeholder={repo ? `Ask about ${repo.full_name}…` : 'Ask Byte-ling to open a repo, or describe one…'}
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={(e) => {

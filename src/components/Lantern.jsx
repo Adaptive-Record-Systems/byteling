@@ -39,9 +39,10 @@ import flameImg from '@/assets/lantern/flame.png';
 const REACTION_MS = 1600;
 const WINGS_OPEN = new Set(['thinking', 'drift', 'notice', 'spark']);
 
-export function Lantern({ mood = 'resting', pulse, hue = null, className = '' }) {
+export function Lantern({ mood = 'resting', pulse, hue = null, className = '', flameVideo = null, size = 160 }) {
   const [reaction, setReaction] = useState(null);
   const lastPulse = useRef(null);
+  const videoRef = useRef(null);
 
   useEffect(() => {
     if (!pulse || pulse.id === lastPulse.current) return;
@@ -50,6 +51,33 @@ export function Lantern({ mood = 'resting', pulse, hue = null, className = '' })
     const t = setTimeout(() => setReaction(null), REACTION_MS);
     return () => clearTimeout(t);
   }, [pulse]);
+
+  // Background tabs pause the flame video; a screen-blended <video> then shows
+  // a stale/torn frame on return. Resuming playback alone doesn't always repaint
+  // the blended layer, so also nudge the current frame to force a fresh paint.
+  useEffect(() => {
+    if (!flameVideo) return;
+    const kick = () => {
+      const v = videoRef.current;
+      if (!v || document.visibilityState !== 'visible') return;
+      const p = v.play();
+      if (p && p.catch) p.catch(() => {});
+      // Re-seek a hair so the compositor repaints the screen-blended surface and
+      // drops the stale frame left over from being backgrounded.
+      if (v.readyState >= 2) {
+        try { v.currentTime = Math.max(0, v.currentTime - 0.04); } catch { /* ignore */ }
+      }
+    };
+    const onRestore = () => { kick(); setTimeout(kick, 150); };
+    document.addEventListener('visibilitychange', onRestore);
+    window.addEventListener('focus', onRestore);
+    window.addEventListener('pageshow', onRestore);
+    return () => {
+      document.removeEventListener('visibilitychange', onRestore);
+      window.removeEventListener('focus', onRestore);
+      window.removeEventListener('pageshow', onRestore);
+    };
+  }, [flameVideo]);
 
   // The flame carries a tint from the open repo; the art is blue (~200), so
   // that's the default and per-repo hues rotate the flame away from it.
@@ -60,9 +88,9 @@ export function Lantern({ mood = 'resting', pulse, hue = null, className = '' })
   return (
     <div
       className={`btl-lantern btl-${state} ${wingsOpen ? 'btl-wings-open' : ''} ${className}`}
-      style={{ '--btl-hue': tint }}
+      style={{ '--btl-hue': tint, '--btl-size': typeof size === 'number' ? `${size}px` : size }}
       role="img"
-      aria-label={`Byteling — ${reaction || mood}`}
+      aria-label={`Byte-ling — ${reaction || mood}`}
     >
       {/* wings-shut base */}
       <img className="btl-body btl-body-rest" src={bodyRest} alt="" draggable="false" />
@@ -72,7 +100,21 @@ export function Lantern({ mood = 'resting', pulse, hue = null, className = '' })
           vanishes. Swap the <img> for a <video> loop later, same slot. */}
       <span className="btl-flame-slot">
         <span className="btl-flame-glow" />
-        <img className="btl-flame-img" src={flameImg} alt="" draggable="false" />
+        {flameVideo ? (
+          <video
+            ref={videoRef}
+            className="btl-flame-img"
+            src={flameVideo}
+            poster={flameImg}
+            autoPlay
+            muted
+            loop
+            playsInline
+            aria-hidden="true"
+          />
+        ) : (
+          <img className="btl-flame-img" src={flameImg} alt="" draggable="false" />
+        )}
       </span>
       <LanternStyles />
     </div>
@@ -95,7 +137,7 @@ function LanternStyles() {
       .btl-lantern {
         position: relative;
         display: inline-block;
-        width: 128px;
+        width: var(--btl-size, 160px);
         aspect-ratio: 1 / 1;
         --glow: hsl(var(--btl-hue) 95% 62%);
         /* the flame art is blue (~200); per-repo hue rotates it away from blue */
@@ -118,11 +160,17 @@ function LanternStyles() {
 
       /* Flame lives inside the chamber, rising from the brass seat. The art is
          a flame on black; mix-blend-mode:screen makes the black disappear. */
-      .btl-flame-slot { position: absolute; inset: 0; pointer-events: none; }
+      /* Clip the flame to the chamber opening so it stays *inside* the vessel
+         and never renders in front of the surrounding frame — regardless of
+         flame size or the reach/flare animations. */
+      .btl-flame-slot {
+        position: absolute; inset: 0; pointer-events: none;
+        clip-path: ellipse(9.8% 11% at 50.5% 55%);
+      }
       .btl-flame-img {
         position: absolute;
         left: 50.5%; bottom: 30%;
-        width: 34%; height: auto;
+        width: 29%; height: auto;
         transform: translateX(-50%);
         transform-origin: 50% 100%;
         mix-blend-mode: screen;
@@ -140,17 +188,19 @@ function LanternStyles() {
         transition: opacity .4s ease;
       }
 
-      /* Resting: alive but calm — a gentle breathing flicker in place. */
-      .btl-resting .btl-flame-img  { animation: btl-flicker 2.6s ease-in-out infinite; }
-      .btl-resting .btl-flame-glow { opacity: .6; animation: btl-breathe 3.4s ease-in-out infinite; }
+      /* Resting: alive but calm. The static image flickers via CSS; a <video>
+         flame supplies its own motion, so only img.btl-flame-img gets btl-flicker. */
+      .btl-resting img.btl-flame-img { animation: btl-flicker 2.6s ease-in-out infinite; }
+      .btl-resting .btl-flame-glow   { opacity: .6; animation: btl-breathe 3.4s ease-in-out infinite; }
 
       /* Thinking: quicker, busier flicker — Byteling is working, wings open. */
-      .btl-thinking .btl-flame-img  { animation: btl-flicker .7s ease-in-out infinite; }
-      .btl-thinking .btl-flame-glow { opacity: .62; animation: btl-breathe .9s ease-in-out infinite; }
+      .btl-thinking img.btl-flame-img { animation: btl-flicker .7s ease-in-out infinite; }
+      .btl-thinking .btl-flame-glow   { opacity: .62; animation: btl-breathe .9s ease-in-out infinite; }
 
       /* Dim: deep in flow — wings shut, flame shrinks to almost nothing. */
-      .btl-dim .btl-flame-img  { transform: translateX(-50%) scaleY(.5); opacity: .55; animation: btl-flicker 4.5s ease-in-out infinite; }
-      .btl-dim .btl-flame-glow { opacity: .12; }
+      .btl-dim .btl-flame-img      { transform: translateX(-50%) scaleY(.5); opacity: .55; }
+      .btl-dim img.btl-flame-img   { animation: btl-flicker 4.5s ease-in-out infinite; }
+      .btl-dim .btl-flame-glow     { opacity: .12; }
 
       /* Drift: repo opened — flame reaches up as the wings swing open. */
       .btl-drift .btl-flame-img  { animation: btl-reach 1.6s cubic-bezier(.3,.7,.2,1); }

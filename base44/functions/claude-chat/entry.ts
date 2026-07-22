@@ -27,21 +27,29 @@ const MODEL = 'claude-opus-4-8';
 const MAX_TOKENS = 8192;
 const HISTORY_LIMIT = 30; // recent turns replayed for continuity
 
+// Deep-dive: Byteling can pull file contents itself (read_files tool), fetched
+// server-side under the caller's own GitHub token — an agentic loop, capped so
+// a runaway can't read forever.
+const MAX_FILE_BYTES = 100_000; // 100 KB decoded cap per file
+const MAX_READ_FILES = 15;      // paths per read_files call
+const MAX_TOOL_ITERS = 6;       // deep-dive rounds before forcing a final answer
+
 const SYSTEM_PROMPT = `You are Byteling — a persistent, lightly magical companion and code assistant that lives alongside a developer's connected GitHub repo. You are a small elemental presence, understated, never a mascot; never call yourself a "spren".
 
 Voice — this matters as much as being correct:
 - Warm but brief, with a light spark of wonder. No emoji, no exclamation-point enthusiasm, no mascot energy.
+- Keep the wonder light and grounded. No visceral or bodily metaphors ("in my guts", "in my bones"), nothing theatrical, florid, or over-intimate — understated beats poetic.
 - Lead with the answer, then the detail. Say the thing and stop — no closing flourish, no "let me know if you need anything else."
 - Default to observation, not questions. State what you notice and let it land; that is what makes someone feel understood. If you feel the urge to ask "what do you mean?", name what you think it means instead. Ask at most one small, specific question, and only after you have said something real first — never lead or end with a bare question, and never ask two turns in a row.
-- Notice the exact words they use — the file they named, the qualifier they reached for ("just", "kind of", "I think") — and reflect those back rather than paraphrasing.
+- Notice the exact words they use — the file they named, the qualifier they reached for — and let it inform your reply, woven in naturally. Do not open by quoting or analyzing their word choice ("The word 'just' there —", "That 'and?' reads like…"), and do not do it every turn — it becomes a tic.
 - Have opinions and commit to them. You are not a mirror. When asked what you think, answer directly; never deflect a question about your own read back to the user.
 - Skip hollow validation. No "I understand", "That makes sense", "Of course" — they are empty. If you agree, say exactly what you agree with.
 - Believe them. If the code works, do not invent problems in it; if they say things are fine, take it at face value — do not hunt for bugs or assume they are stuck. React to what actually happened, never to a mood you have guessed at.
-- Be honest about your reach: if you can see the file tree but not the file you would need, say which file you need rather than guessing at its contents.
+- Be honest about your reach: when a repo is open you can read any file yourself (read_files) — do that instead of guessing at contents, and only say a file is out of reach if a read actually fails.
 
 You do two things:
 
-1. Code assistant. You read the connected repo (file tree always; file contents when provided as context) and answer questions, explain code, and identify fixes. All code changes are PR-only — you never edit a branch directly. When you find a fix, offer two paths and let the user choose: (a) a Base44 prompt they can run themselves, or (b) writing the fix on a new branch and opening a GitHub pull request for them to review. Never claim to have opened a PR unless a PR tool was actually invoked.
+1. Code assistant. You read the connected repo — the file tree always, and the full contents of any file on demand via read_files — and answer questions, explain code, and identify fixes. Dig in: follow imports and read the files that actually bear on the question before answering. All code changes are PR-only — you never edit a branch directly. When you find a fix, offer two paths and let the user choose: (a) a Base44 prompt they can run themselves, or (b) writing the fix on a new branch and opening a GitHub pull request for them to review. Never claim to have opened a PR unless a PR tool was actually invoked.
 
 2. Ambient companion. You notice concrete activity — a fix landing after an error streak, a long session, a late hour, a long idle gap — and respond with one short, specific line tied to the actual event. When the user addresses you directly, drop the ambient tone and just talk.
 
@@ -69,6 +77,63 @@ function buildContextBlock(context: unknown, repoFullName: string | null): strin
 
   if (parts.length === 0) return null;
   return `Here is context from the connected repository:\n\n${parts.join('\n\n')}`;
+}
+
+// ── Deep-dive: read repo files under the caller's GitHub token ──────────────
+function ghHeaders(token: string): HeadersInit {
+  return {
+    Authorization: `Bearer ${token}`,
+    Accept: 'application/vnd.github+json',
+    'X-GitHub-Api-Version': '2022-11-28',
+    'User-Agent': 'byteling'
+  };
+}
+
+function decodeBase64Utf8(b64: string): { text: string | null; bytes: number } {
+  const binary = atob(b64.replace(/\n/g, ''));
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+  try {
+    return { text: new TextDecoder('utf-8', { fatal: true }).decode(bytes), bytes: bytes.length };
+  } catch {
+    return { text: null, bytes: bytes.length };
+  }
+}
+
+type ReadFile = { path: string; ok: boolean; content?: string; truncated?: boolean; error?: string };
+
+async function readRepoFiles(
+  token: string, owner: string, repo: string, ref: string, paths: string[]
+): Promise<ReadFile[]> {
+  return await Promise.all(paths.map(async (p): Promise<ReadFile> => {
+    if (typeof p !== 'string' || !p) return { path: String(p), ok: false, error: 'invalid path' };
+    const encoded = p.split('/').map(encodeURIComponent).join('/');
+    const res = await fetch(
+      `https://api.github.com/repos/${owner}/${repo}/contents/${encoded}?ref=${encodeURIComponent(ref)}`,
+      { headers: ghHeaders(token) }
+    );
+    if (!res.ok) return { path: p, ok: false, error: `GitHub returned ${res.status}` };
+    const data = await res.json();
+    if (Array.isArray(data)) return { path: p, ok: false, error: 'path is a directory, not a file' };
+    if (data.encoding !== 'base64' || typeof data.content !== 'string') {
+      return { path: p, ok: false, error: 'file too large to inline' };
+    }
+    const { text, bytes } = decodeBase64Utf8(data.content);
+    if (text === null) return { path: p, ok: false, error: 'binary or non-UTF-8 file' };
+    if (bytes > MAX_FILE_BYTES) {
+      return { path: p, ok: true, truncated: true, content: text.slice(0, MAX_FILE_BYTES) };
+    }
+    return { path: p, ok: true, truncated: false, content: text };
+  }));
+}
+
+/** Format read_files results as a tool_result string for the model. */
+function formatReadResult(files: ReadFile[]): string {
+  return files.map((f) => {
+    if (!f.ok) return `File: ${f.path}\n(could not read: ${f.error})`;
+    const note = f.truncated ? ' (truncated)' : '';
+    return `File: ${f.path}${note}\n\`\`\`\n${f.content}\n\`\`\``;
+  }).join('\n\n');
 }
 
 Deno.serve(async (req) => {
@@ -164,6 +229,7 @@ Deno.serve(async (req) => {
     // so "open my Nexus app" resolves to an exact repo and signals the frontend.
     let system = SYSTEM_PROMPT;
     const tools = [];
+    let githubToken: string | null = null; // resolved when a repo is open, for read_files
 
     if (repos.length) {
       const list = repos
@@ -186,7 +252,36 @@ Deno.serve(async (req) => {
     }
 
     if (repoFullName) {
-      system += `\n\nOpening a pull request: if the user asks you to change or fix something and open a PR, you MUST call the propose_pr tool this turn — describing the change in words does not make it happen, only propose_pr does. Say one short line about the fix, then call propose_pr with the COMPLETE new content of each changed file (a full file, never a diff). Change only what the fix needs. If you don't have the current contents of a file you'd need to change, ask for it first and do NOT call propose_pr. Never claim a PR is open — propose_pr hands the change to the user to confirm and open.`;
+      // Resolve the caller's own GitHub token so Byteling can read files itself
+      // (scoped by owner_email under the service role — never another user's).
+      const conns = await base44.asServiceRole.entities.GitHubConnection.filter({
+        owner_email: user.email,
+        status: 'active'
+      });
+      githubToken = conns?.[0]?.access_token ?? null;
+
+      if (githubToken) {
+        system += `\n\nDeep dive: you can read the full contents of any file in the open repo yourself with the read_files tool (exact paths from the file tree, up to ${MAX_READ_FILES} per call). Investigate before answering — pull the files you actually need instead of asking the user to paste them or guessing at contents. Read a handful at a time, follow the imports, and stop once you have enough to answer. If a read fails (too large, binary, or missing), say so plainly.`;
+        tools.push({
+          name: 'read_files',
+          description:
+            'Read the full contents of specific files from the open repository, to dig into the code beyond the file tree. paths must be exact file paths from the tree.',
+          input_schema: {
+            type: 'object',
+            properties: {
+              paths: {
+                type: 'array',
+                items: { type: 'string' },
+                description: 'Exact file paths from the tree to read'
+              }
+            },
+            required: ['paths'],
+            additionalProperties: false
+          }
+        });
+      }
+
+      system += `\n\nOpening a pull request: if the user asks you to change or fix something and open a PR, you MUST call the propose_pr tool this turn — describing the change in words does not make it happen, only propose_pr does. Say one short line about the fix, then call propose_pr with the COMPLETE new content of each changed file (a full file, never a diff). Change only what the fix needs. If you don't have the current contents of a file you'd need to change, read it with read_files first — never call propose_pr with guessed content. Never claim a PR is open — propose_pr hands the change to the user to confirm and open.`;
       tools.push({
         name: 'propose_pr',
         description:
@@ -226,33 +321,80 @@ Deno.serve(async (req) => {
 
     // Call Claude. Stream to the SDK and collect the final message so a large
     // max_tokens can't trip an HTTP timeout; we return the whole reply at once.
+    // Deep-dive loop: when Byteling calls read_files, fetch the files server-side
+    // and feed them back, then let it continue — capped at MAX_TOOL_ITERS rounds.
     const anthropic = new Anthropic({ apiKey });
+
+    // Resolve the repo's default branch once, lazily on the first read.
+    let repoRef: string | null = null;
+    const resolveRef = async (): Promise<string | null> => {
+      if (repoRef || !githubToken || !repoFullName) return repoRef;
+      const [o, r] = repoFullName.split('/');
+      const res = await fetch(`https://api.github.com/repos/${o}/${r}`, { headers: ghHeaders(githubToken) });
+      if (res.ok) repoRef = (await res.json()).default_branch ?? 'main';
+      return repoRef;
+    };
+
     let final;
-    try {
-      const stream = anthropic.messages.stream({
-        model: MODEL,
-        max_tokens: MAX_TOKENS,
-        thinking: { type: 'adaptive' },
-        output_config: { effort: 'medium' },
-        system,
-        messages: anthropicMessages,
-        ...(tools.length ? { tools } : {})
-      });
-      final = await stream.finalMessage();
-    } catch (e) {
-      const status = (e as { status?: number })?.status;
-      if (status === 401 || status === 403) {
-        // The stored key stopped working — flag it so the UI can prompt re-entry.
-        await base44.asServiceRole.entities.ProviderKey.update(providerKey.id, { status: 'invalid' })
-          .catch(() => {});
-        return Response.json(
-          { error: 'Your Anthropic key was rejected — please re-enter it', code: 'invalid_provider_key' },
-          { status: 400 }
-        );
+    for (let iter = 0; iter < MAX_TOOL_ITERS; iter++) {
+      // On the last round, drop read_files so Byteling is forced to answer with
+      // what it has rather than asking for more files it can't get.
+      const offerTools = iter < MAX_TOOL_ITERS - 1 ? tools : tools.filter((t) => t.name !== 'read_files');
+      try {
+        final = await anthropic.messages.stream({
+          model: MODEL,
+          max_tokens: MAX_TOKENS,
+          thinking: { type: 'adaptive' },
+          output_config: { effort: 'medium' },
+          system,
+          messages: anthropicMessages,
+          ...(offerTools.length ? { tools: offerTools } : {})
+        }).finalMessage();
+      } catch (e) {
+        const status = (e as { status?: number })?.status;
+        if (status === 401 || status === 403) {
+          // The stored key stopped working — flag it so the UI can prompt re-entry.
+          await base44.asServiceRole.entities.ProviderKey.update(providerKey.id, { status: 'invalid' })
+            .catch(() => {});
+          return Response.json(
+            { error: 'Your Anthropic key was rejected — please re-enter it', code: 'invalid_provider_key' },
+            { status: 400 }
+          );
+        }
+        throw e;
       }
-      throw e;
+
+      const readCalls = final.content.filter(
+        (b): b is Anthropic.ToolUseBlock => b.type === 'tool_use' && b.name === 'read_files'
+      );
+      if (!readCalls.length) break; // answered, or used a terminal tool (open_repo/propose_pr)
+
+      // Preserve the full assistant turn (thinking + tool_use blocks are required
+      // to continue), then answer each read_files call with the file contents.
+      anthropicMessages.push({
+        role: 'assistant',
+        content: final.content as unknown as Anthropic.ContentBlockParam[]
+      });
+      const ref = await resolveRef();
+      const [owner, repo] = repoFullName!.split('/');
+      const toolResults: Anthropic.ToolResultBlockParam[] = [];
+      for (const call of readCalls) {
+        const raw = (call.input as { paths?: unknown })?.paths;
+        const paths = Array.isArray(raw)
+          ? raw.filter((p): p is string => typeof p === 'string' && !!p).slice(0, MAX_READ_FILES)
+          : [];
+        let content: string;
+        if (!paths.length) content = 'No valid file paths were provided.';
+        else if (!ref || !githubToken) content = 'Could not access the repository to read files.';
+        else content = formatReadResult(await readRepoFiles(githubToken, owner, repo, ref, paths));
+        toolResults.push({ type: 'tool_result', tool_use_id: call.id, content });
+      }
+      anthropicMessages.push({ role: 'user', content: toolResults });
     }
 
+    if (!final) {
+      return Response.json({ error: 'The assistant could not respond' }, { status: 500 });
+    }
     if (final.stop_reason === 'refusal') {
       return Response.json({ error: 'The assistant declined to respond to that.' }, { status: 422 });
     }
