@@ -67,10 +67,11 @@ Deno.serve(async (req) => {
     const action = body.action;
     const repoFullName = body.repo_full_name;
 
-    if (action !== 'tree' && action !== 'files') {
-      return Response.json({ error: "action must be 'tree' or 'files'" }, { status: 400 });
+    if (action !== 'tree' && action !== 'files' && action !== 'list') {
+      return Response.json({ error: "action must be 'tree', 'files', or 'list'" }, { status: 400 });
     }
-    if (typeof repoFullName !== 'string' || !REPO_RE.test(repoFullName)) {
+    // list needs no repo; tree/files require a valid owner/repo.
+    if (action !== 'list' && (typeof repoFullName !== 'string' || !REPO_RE.test(repoFullName))) {
       return Response.json({ error: 'repo_full_name must be "owner/repo"' }, { status: 400 });
     }
 
@@ -86,6 +87,29 @@ Deno.serve(async (req) => {
       return Response.json({ error: 'No active GitHub connection for this user' }, { status: 409 });
     }
     const token = connection.access_token;
+
+    if (action === 'list') {
+      // Repos the user can access — their own plus org repos (e.g. an approved
+      // Adaptive-Record-Systems). Most-recently-pushed first, so the useful ones
+      // surface. One page (100) is plenty for resolving "open my X app".
+      const res = await fetch(
+        'https://api.github.com/user/repos?per_page=100&sort=pushed&affiliation=owner,collaborator,organization_member',
+        { headers: ghHeaders(token) }
+      );
+      if (!res.ok) {
+        return Response.json({ error: `GitHub repo list failed (${res.status})` }, { status: 502 });
+      }
+      const data = await res.json();
+      const repos = (Array.isArray(data) ? data : []).map((r: Record<string, unknown>) => ({
+        full_name: r.full_name,
+        name: r.name,
+        description: r.description ?? null,
+        private: Boolean(r.private),
+        pushed_at: r.pushed_at ?? null
+      }));
+      return Response.json({ count: repos.length, repos });
+    }
+
     const [owner, repo] = repoFullName.split('/');
 
     // Resolve the ref: explicit ref wins, else the repo's default branch.

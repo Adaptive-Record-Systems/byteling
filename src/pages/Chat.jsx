@@ -2,10 +2,9 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import ReactMarkdown from 'react-markdown';
 import {
-  getConnection, getRepoTree, getRepoFiles, ensureSession, loadMessages, sendChat, errInfo
+  getConnection, listRepos, getRepoTree, getRepoFiles, ensureSession, loadMessages, sendChat, errInfo
 } from '@/api/byteling';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
@@ -17,7 +16,6 @@ import {
 const LAST_REPO_KEY = 'byteling_last_repo';
 const MAX_TREE_LINES = 1200;
 
-// Byteling's replies render in serif (a distinct "voice"); code stays mono.
 const md = {
   p: (p) => <p className="mb-2 last:mb-0 leading-relaxed" {...p} />,
   ul: (p) => <ul className="list-disc pl-5 mb-2 space-y-1" {...p} />,
@@ -30,7 +28,6 @@ const md = {
   pre: (p) => <pre className="mb-2 p-3 rounded-md bg-background/60 overflow-x-auto text-sm not-italic" {...p} />
 };
 
-// Companion "noticing" — a centered aside, distinct from a reply.
 function Aside({ children }) {
   return (
     <div className="self-center flex items-center gap-2 max-w-[90%] text-xs text-muted-foreground bg-primary/5 border border-primary/10 px-3 py-1.5 rounded-full">
@@ -40,12 +37,20 @@ function Aside({ children }) {
   );
 }
 
+function ByteAvatar() {
+  return (
+    <span className="w-6 h-6 rounded-md bg-primary/10 text-primary flex items-center justify-center shrink-0 mt-1">
+      <Sparkles className="w-3.5 h-3.5" />
+    </span>
+  );
+}
+
 export default function Chat() {
   const [connection, setConnection] = useState(null);
-  const [repoInput, setRepoInput] = useState(localStorage.getItem(LAST_REPO_KEY) || '');
+  const [repos, setRepos] = useState([]);
   const [repo, setRepo] = useState(null);
-  const [editingRepo, setEditingRepo] = useState(false);
   const [loadingRepo, setLoadingRepo] = useState(false);
+  const [repoPickerOpen, setRepoPickerOpen] = useState(false);
   const [repoError, setRepoError] = useState(null);
 
   const [contextFiles, setContextFiles] = useState([]);
@@ -60,31 +65,36 @@ export default function Chat() {
 
   useEffect(() => {
     getConnection().then(setConnection).catch(() => {});
+    listRepos().then(setRepos).catch(() => {});
   }, []);
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' });
-  }, [messages, sending]);
+  }, [messages, sending, loadingRepo]);
 
   const blobPaths = useMemo(
     () => (repo?.tree?.tree || []).filter((e) => e.type === 'blob').map((e) => e.path),
     [repo]
   );
 
-  const loadRepo = async () => {
-    const full = repoInput.trim();
+  // keepThread: keep the visible conversation (used when Byteling opens a repo
+  // mid-chat); otherwise replace with that repo's own stored history.
+  const loadRepo = async (fullName, { keepThread = false } = {}) => {
+    const full = (fullName || '').trim();
     if (!full || !connection) return;
+    setRepoPickerOpen(false);
     setLoadingRepo(true);
     setRepoError(null);
     try {
       const tree = await getRepoTree(full);
       const session = await ensureSession(full, connection.id);
-      const prior = await loadMessages(session.id);
       setRepo({ full_name: full, tree, session });
       setContextFiles([]);
-      setMessages(prior.map((m) => ({ role: m.role, text: m.text || '' })));
-      setEditingRepo(false);
       localStorage.setItem(LAST_REPO_KEY, full);
+      if (!keepThread) {
+        const prior = await loadMessages(session.id);
+        setMessages(prior.map((m) => ({ role: m.role, text: m.text || '' })));
+      }
     } catch (e) {
       const { message } = errInfo(e);
       setRepoError(
@@ -92,7 +102,6 @@ export default function Chat() {
           ? `${message}. If this is an org repo, an org owner must approve the Byteling OAuth app.`
           : message
       );
-      setRepo(null);
     } finally {
       setLoadingRepo(false);
     }
@@ -114,6 +123,7 @@ export default function Chat() {
   const removeContextFile = (path) => setContextFiles((prev) => prev.filter((f) => f.path !== path));
 
   const buildContext = () => {
+    if (!repo) return undefined;
     const paths = blobPaths.slice(0, MAX_TREE_LINES);
     const tree_text = paths.join('\n') + (blobPaths.length > MAX_TREE_LINES ? `\n… (${blobPaths.length - MAX_TREE_LINES} more)` : '');
     return { tree_text, files: contextFiles.map((f) => ({ path: f.path, content: f.content })) };
@@ -121,19 +131,21 @@ export default function Chat() {
 
   const send = async () => {
     const text = input.trim();
-    if (!text || !repo || sending) return;
+    if (!text || sending) return;
     setChatError(null);
     setInput('');
     setMessages((prev) => [...prev, { role: 'user', text }]);
     setSending(true);
     try {
       const res = await sendChat({
-        sessionId: repo.session.id,
+        sessionId: repo?.session?.id,
         message: text,
-        repoFullName: repo.full_name,
-        context: buildContext()
+        repoFullName: repo?.full_name,
+        context: buildContext(),
+        repos: repos.map((r) => ({ full_name: r.full_name, description: r.description }))
       });
-      setMessages((prev) => [...prev, { role: 'assistant', text: res.reply }]);
+      if (res.reply) setMessages((prev) => [...prev, { role: 'assistant', text: res.reply }]);
+      if (res.open_repo) await loadRepo(res.open_repo, { keepThread: true });
     } catch (e) {
       const { message, code } = errInfo(e);
       setChatError(
@@ -146,23 +158,6 @@ export default function Chat() {
     }
   };
 
-  const repoBar = (
-    <div className="flex items-center gap-2">
-      <FolderGit2 className="w-4 h-4 text-muted-foreground shrink-0" />
-      <Input
-        placeholder="owner/repo"
-        value={repoInput}
-        onChange={(e) => setRepoInput(e.target.value)}
-        onKeyDown={(e) => e.key === 'Enter' && loadRepo()}
-        className="h-9"
-        autoFocus
-      />
-      <Button size="sm" onClick={loadRepo} disabled={loadingRepo || !repoInput.trim()}>
-        {loadingRepo ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Load'}
-      </Button>
-    </div>
-  );
-
   return (
     <div className="min-h-screen bg-background flex flex-col">
       <div className="w-full max-w-3xl mx-auto px-4 py-4 flex-1 flex flex-col min-h-0">
@@ -172,21 +167,37 @@ export default function Chat() {
             <Sparkles className="w-4 h-4" />
           </span>
           <h1 className="text-lg font-heading font-bold">Byteling</h1>
-          {repo && !editingRepo && (
-            <button
-              onClick={() => setEditingRepo(true)}
-              className="flex items-center gap-1.5 text-xs text-muted-foreground bg-muted hover:bg-muted/70 px-2.5 py-1 rounded-md"
-            >
-              <GitBranch className="w-3.5 h-3.5" />
-              {repo.full_name}
-            </button>
-          )}
+
+          <Popover open={repoPickerOpen} onOpenChange={setRepoPickerOpen}>
+            <PopoverTrigger asChild>
+              <button className="flex items-center gap-1.5 text-xs text-muted-foreground bg-muted hover:bg-muted/70 px-2.5 py-1 rounded-md">
+                {loadingRepo ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <GitBranch className="w-3.5 h-3.5" />}
+                {repo ? repo.full_name : 'pick a repo'}
+              </button>
+            </PopoverTrigger>
+            <PopoverContent className="p-0 w-[360px]" align="start">
+              <Command>
+                <CommandInput placeholder="Search your repos…" />
+                <CommandList>
+                  <CommandEmpty>No repos found.</CommandEmpty>
+                  <CommandGroup>
+                    {repos.map((r) => (
+                      <CommandItem key={r.full_name} value={r.full_name} onSelect={() => loadRepo(r.full_name)} className="text-xs">
+                        <FolderGit2 className="w-3.5 h-3.5 mr-2 text-muted-foreground" />
+                        {r.full_name}
+                      </CommandItem>
+                    ))}
+                  </CommandGroup>
+                </CommandList>
+              </Command>
+            </PopoverContent>
+          </Popover>
+
           <Link to="/?setup=1" className="ml-auto text-muted-foreground hover:text-foreground" title="Setup">
             <Settings className="w-4 h-4" />
           </Link>
         </div>
 
-        {(editingRepo || !repo) && <div className="mb-3">{repoBar}</div>}
         {repoError && (
           <div className="flex items-start gap-2 text-sm text-destructive mb-3">
             <AlertTriangle className="w-4 h-4 mt-0.5 shrink-0" />
@@ -194,108 +205,97 @@ export default function Chat() {
           </div>
         )}
 
-        {!repo ? (
-          <div className="flex-1 flex flex-col items-center justify-center text-center px-6">
-            <Sparkles className="w-8 h-8 text-primary/40 mb-3" />
-            <p className="font-serif text-lg mb-1">Point me at a repo and I&apos;ll start reading.</p>
-            <p className="text-sm text-muted-foreground">Type an <span className="font-mono">owner/repo</span> above — I&apos;ll pull its tree so you can ask me anything about it.</p>
+        {/* Context files (only with a repo loaded) */}
+        {repo && (
+          <div className="flex flex-wrap items-center gap-2 mb-3">
+            <span className="text-xs text-muted-foreground">{repo.tree.count} files</span>
+            {contextFiles.map((f) => (
+              <Badge key={f.path} variant="secondary" className="gap-1 font-mono text-xs">
+                <FileCode className="w-3 h-3" />
+                {f.path.split('/').pop()}
+                <button onClick={() => removeContextFile(f.path)} className="ml-1 hover:text-destructive">
+                  <X className="w-3 h-3" />
+                </button>
+              </Badge>
+            ))}
+            <Popover open={pickerOpen} onOpenChange={setPickerOpen}>
+              <PopoverTrigger asChild>
+                <Button variant="outline" size="sm" className="h-7 gap-1 text-xs">
+                  <Plus className="w-3 h-3" /> Add file to context
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent className="p-0 w-[420px]" align="start">
+                <Command>
+                  <CommandInput placeholder="Search files…" />
+                  <CommandList>
+                    <CommandEmpty>No files.</CommandEmpty>
+                    <CommandGroup>
+                      {blobPaths.map((p) => (
+                        <CommandItem key={p} value={p} onSelect={() => addContextFile(p)} className="font-mono text-xs">
+                          {p}
+                        </CommandItem>
+                      ))}
+                    </CommandGroup>
+                  </CommandList>
+                </Command>
+              </PopoverContent>
+            </Popover>
           </div>
-        ) : (
-          <>
-            {/* Context files */}
-            <div className="flex flex-wrap items-center gap-2 mb-3">
-              <span className="text-xs text-muted-foreground">{repo.tree.count} files</span>
-              {contextFiles.map((f) => (
-                <Badge key={f.path} variant="secondary" className="gap-1 font-mono text-xs">
-                  <FileCode className="w-3 h-3" />
-                  {f.path.split('/').pop()}
-                  <button onClick={() => removeContextFile(f.path)} className="ml-1 hover:text-destructive">
-                    <X className="w-3 h-3" />
-                  </button>
-                </Badge>
-              ))}
-              <Popover open={pickerOpen} onOpenChange={setPickerOpen}>
-                <PopoverTrigger asChild>
-                  <Button variant="outline" size="sm" className="h-7 gap-1 text-xs">
-                    <Plus className="w-3 h-3" /> Add file to context
-                  </Button>
-                </PopoverTrigger>
-                <PopoverContent className="p-0 w-[420px]" align="start">
-                  <Command>
-                    <CommandInput placeholder="Search files…" />
-                    <CommandList>
-                      <CommandEmpty>No files.</CommandEmpty>
-                      <CommandGroup>
-                        {blobPaths.map((p) => (
-                          <CommandItem key={p} value={p} onSelect={() => addContextFile(p)} className="font-mono text-xs">
-                            {p}
-                          </CommandItem>
-                        ))}
-                      </CommandGroup>
-                    </CommandList>
-                  </Command>
-                </PopoverContent>
-              </Popover>
-            </div>
-
-            {/* Thread */}
-            <div ref={scrollRef} className="flex-1 min-h-0 overflow-y-auto space-y-4 pr-1 flex flex-col">
-              {messages.length === 0 && (
-                <Aside>There you are — I&apos;ve got {repo.full_name} open. Ask me anything about it.</Aside>
-              )}
-              {messages.map((m, i) => (
-                <div key={i} className={m.role === 'user' ? 'flex justify-end' : 'flex justify-start gap-2'}>
-                  {m.role === 'assistant' && (
-                    <span className="w-6 h-6 rounded-md bg-primary/10 text-primary flex items-center justify-center shrink-0 mt-1">
-                      <Sparkles className="w-3.5 h-3.5" />
-                    </span>
-                  )}
-                  <div
-                    className={
-                      m.role === 'user'
-                        ? 'max-w-[85%] rounded-2xl rounded-br-sm bg-primary text-primary-foreground px-4 py-2 text-sm whitespace-pre-wrap'
-                        : 'max-w-[85%] rounded-2xl rounded-bl-sm bg-muted text-foreground px-4 py-3 text-sm font-serif'
-                    }
-                  >
-                    {m.role === 'user' ? m.text : <ReactMarkdown components={md}>{m.text}</ReactMarkdown>}
-                  </div>
-                </div>
-              ))}
-              {sending && (
-                <div className="flex justify-start gap-2">
-                  <span className="w-6 h-6 rounded-md bg-primary/10 text-primary flex items-center justify-center shrink-0 mt-1">
-                    <Sparkles className="w-3.5 h-3.5" />
-                  </span>
-                  <div className="rounded-2xl rounded-bl-sm bg-muted px-4 py-3">
-                    <Loader2 className="w-4 h-4 animate-spin text-muted-foreground" />
-                  </div>
-                </div>
-              )}
-            </div>
-
-            {chatError && <p className="text-sm text-destructive mt-2">{chatError}</p>}
-
-            {/* Composer */}
-            <div className="mt-3 flex items-end gap-2">
-              <Textarea
-                placeholder={`Ask about ${repo.full_name}…`}
-                value={input}
-                onChange={(e) => setInput(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter' && !e.shiftKey) {
-                    e.preventDefault();
-                    send();
-                  }
-                }}
-                rows={2}
-                className="resize-none"
-              />
-              <Button onClick={send} disabled={sending || !input.trim()} className="h-auto py-2">
-                <Send className="w-4 h-4" />
-              </Button>
-            </div>
-          </>
         )}
+
+        {/* Thread */}
+        <div ref={scrollRef} className="flex-1 min-h-0 overflow-y-auto space-y-4 pr-1 flex flex-col">
+          {messages.length === 0 && !repo && (
+            <Aside>There you are. Tell me which repo to open — or just describe it, like &ldquo;check out my Nexus app.&rdquo;</Aside>
+          )}
+          {messages.length === 0 && repo && (
+            <Aside>Got {repo.full_name} open. Ask me anything about it.</Aside>
+          )}
+          {messages.map((m, i) => (
+            <div key={i} className={m.role === 'user' ? 'flex justify-end' : 'flex justify-start gap-2'}>
+              {m.role === 'assistant' && <ByteAvatar />}
+              <div
+                className={
+                  m.role === 'user'
+                    ? 'max-w-[85%] rounded-2xl rounded-br-sm bg-primary text-primary-foreground px-4 py-2 text-sm whitespace-pre-wrap'
+                    : 'max-w-[85%] rounded-2xl rounded-bl-sm bg-muted text-foreground px-4 py-3 text-sm font-serif'
+                }
+              >
+                {m.role === 'user' ? m.text : <ReactMarkdown components={md}>{m.text}</ReactMarkdown>}
+              </div>
+            </div>
+          ))}
+          {(sending || loadingRepo) && (
+            <div className="flex justify-start gap-2">
+              <ByteAvatar />
+              <div className="rounded-2xl rounded-bl-sm bg-muted px-4 py-3">
+                <Loader2 className="w-4 h-4 animate-spin text-muted-foreground" />
+              </div>
+            </div>
+          )}
+        </div>
+
+        {chatError && <p className="text-sm text-destructive mt-2">{chatError}</p>}
+
+        {/* Composer — always available */}
+        <div className="mt-3 flex items-end gap-2">
+          <Textarea
+            placeholder={repo ? `Ask about ${repo.full_name}…` : 'Ask Byteling to open a repo, or describe one…'}
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                send();
+              }
+            }}
+            rows={2}
+            className="resize-none"
+          />
+          <Button onClick={send} disabled={sending || !input.trim()} className="h-auto py-2">
+            <Send className="w-4 h-4" />
+          </Button>
+        </div>
       </div>
     </div>
   );
