@@ -49,6 +49,11 @@ export async function disconnectGithub(connectionId) {
 
 // --- Repo reads ---
 
+export async function listRepos() {
+  const res = await base44.functions.invoke('github-repo', { action: 'list' });
+  return res.data.repos; // [{ full_name, name, description, private, pushed_at }]
+}
+
 export async function getRepoTree(repoFullName) {
   const res = await base44.functions.invoke('github-repo', {
     action: 'tree',

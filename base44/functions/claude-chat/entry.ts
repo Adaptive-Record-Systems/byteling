@@ -104,6 +104,17 @@ Deno.serve(async (req) => {
     const sessionId = typeof body.session_id === 'string' ? body.session_id : null;
     let repoFullName = typeof body.repo_full_name === 'string' ? body.repo_full_name : null;
 
+    // The caller-supplied list of repos the user can open, so Byteling can
+    // resolve "open my Nexus app" to an exact full_name and signal a switch.
+    const repos = Array.isArray(body.repos)
+      ? body.repos
+          .filter((r: unknown) => r && typeof (r as { full_name?: unknown }).full_name === 'string')
+          .map((r: { full_name: string; description?: unknown }) => ({
+            full_name: r.full_name,
+            description: typeof r.description === 'string' ? r.description : ''
+          }))
+      : [];
+
     // If a session is named, the caller must own it. History + persistence hang
     // off that. Read under the service role so we can verify ownership explicitly
     // rather than trusting the client.
@@ -141,6 +152,32 @@ Deno.serve(async (req) => {
     const userContent = contextBlock ? `${contextBlock}\n\n---\n\n${message}` : message;
     anthropicMessages.push({ role: 'user', content: userContent });
 
+    // Give Byteling the openable-repo list and a tool to switch the workspace,
+    // so "open my Nexus app" resolves to an exact repo and signals the frontend.
+    let system = SYSTEM_PROMPT;
+    let tools;
+    if (repos.length) {
+      const list = repos
+        .map((r) => (r.description ? `- ${r.full_name} — ${r.description}` : `- ${r.full_name}`))
+        .join('\n');
+      system += `\n\nRepositories you can open for the user:\n${list}\n\nWhen the user asks to open, switch to, or look at one you can identify from this list, say one short line first (e.g. "Opening Nexus — reading it now."), then call the open_repo tool with its exact full_name. If the reference is ambiguous between several, ask which they mean instead of guessing.`;
+      tools = [
+        {
+          name: 'open_repo',
+          description:
+            "Open/switch the workspace to one of the user's repositories so you can read it. repo_full_name must be an exact full_name from the provided list.",
+          input_schema: {
+            type: 'object',
+            properties: {
+              repo_full_name: { type: 'string', description: 'Exact owner/repo from the list' }
+            },
+            required: ['repo_full_name'],
+            additionalProperties: false
+          }
+        }
+      ];
+    }
+
     // Call Claude. Stream to the SDK and collect the final message so a large
     // max_tokens can't trip an HTTP timeout; we return the whole reply at once.
     const anthropic = new Anthropic({ apiKey });
@@ -151,8 +188,9 @@ Deno.serve(async (req) => {
         max_tokens: MAX_TOKENS,
         thinking: { type: 'adaptive' },
         output_config: { effort: 'medium' },
-        system: SYSTEM_PROMPT,
-        messages: anthropicMessages
+        system,
+        messages: anthropicMessages,
+        ...(tools ? { tools } : {})
       });
       final = await stream.finalMessage();
     } catch (e) {
@@ -179,9 +217,22 @@ Deno.serve(async (req) => {
       .join('')
       .trim();
 
-    // Persist the turn if we have a session to hang it off.
+    // Harvest an open_repo request, validated against the list we offered so a
+    // stray value can't point the frontend at an arbitrary repo.
+    let openRepo: string | undefined;
+    for (const block of final.content) {
+      if (block.type === 'tool_use' && block.name === 'open_repo') {
+        const target = (block.input as { repo_full_name?: unknown })?.repo_full_name;
+        if (typeof target === 'string' && repos.some((r) => r.full_name === target)) {
+          openRepo = target;
+        }
+      }
+    }
+
+    // Persist the turn if we have a session and actual text (a bare open_repo
+    // turn with no prose isn't worth a stored message).
     let assistantSeq: number | undefined;
-    if (sessionId) {
+    if (sessionId && reply) {
       const existing = await base44.asServiceRole.entities.Message.filter(
         { session_id: sessionId },
         '-sequence_number',
@@ -211,6 +262,7 @@ Deno.serve(async (req) => {
 
     return Response.json({
       reply,
+      open_repo: openRepo,
       session_id: sessionId ?? undefined,
       sequence_number: assistantSeq
     });
