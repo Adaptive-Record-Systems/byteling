@@ -119,19 +119,19 @@ function LanternStyles() {
       .btl-flame-slot {
         position: absolute;
         left: 50.5%;
-        top: 63.5%;
-        width: 20%;
-        height: 17%;
+        top: 64%;
+        width: 26%;
+        height: 23%;
         transform: translate(-50%, -100%);
         pointer-events: none;
       }
       .btl-flame-glow {
         position: absolute;
-        left: 50%; bottom: -6%;
-        width: 180%; height: 150%;
+        left: 50%; bottom: -8%;
+        width: 210%; height: 180%;
         transform: translateX(-50%);
-        background: radial-gradient(ellipse at 50% 75%, var(--glow) 0%, transparent 70%);
-        opacity: .5;
+        background: radial-gradient(ellipse at 50% 75%, var(--glow) 0%, transparent 72%);
+        opacity: .6;
         filter: blur(4px);
         mix-blend-mode: screen;
         transition: opacity .4s ease;
@@ -150,7 +150,7 @@ function LanternStyles() {
 
       /* Resting: alive but calm — a gentle breathing flicker in place. */
       .btl-resting .btl-flame-shape { animation: btl-flicker 2.6s ease-in-out infinite; }
-      .btl-resting .btl-flame-glow  { opacity: .42; animation: btl-breathe 3.4s ease-in-out infinite; }
+      .btl-resting .btl-flame-glow  { opacity: .68; animation: btl-breathe 3.4s ease-in-out infinite; }
 
       /* Thinking: quicker, busier flicker — Byteling is working, wings open. */
       .btl-thinking .btl-flame-shape { animation: btl-flicker .7s ease-in-out infinite; }
@@ -178,7 +178,7 @@ function LanternStyles() {
         55%      { transform: translateX(-50%) scaleY(.95) scaleX(1.04); }
         75%      { transform: translateX(-50%) scaleY(1.04) scaleX(.98); }
       }
-      @keyframes btl-breathe { 0%,100% { opacity: .38; } 50% { opacity: .55; } }
+      @keyframes btl-breathe { 0%,100% { opacity: .58; } 50% { opacity: .78; } }
       @keyframes btl-reach {
         0%   { transform: translateX(-50%) scaleY(1); }
         35%  { transform: translateX(-50%) scaleY(1.5) translateY(-8%); }
@@ -199,20 +199,20 @@ function LanternStyles() {
 
       /* Tiny flame mark for headers/avatars. */
       .btl-mark {
-        --flame: hsl(var(--btl-hue) 92% 58%);
-        --flame-core: hsl(calc(var(--btl-hue) + 20) 100% 90%);
+        --flame: hsl(var(--btl-hue) 95% 60%);
+        --flame-core: hsl(calc(var(--btl-hue) + 22) 100% 94%);
         position: relative;
         display: inline-flex;
         width: 1em; height: 1em;
         align-items: center; justify-content: center;
       }
       .btl-mark-flame {
-        width: 0.62em; height: 0.82em;
-        background: radial-gradient(ellipse at 50% 75%, var(--flame-core) 0%, var(--flame) 55%, transparent 100%);
+        width: 0.72em; height: 0.94em;
+        background: radial-gradient(ellipse at 50% 74%, #fff 0%, var(--flame-core) 34%, var(--flame) 66%, transparent 100%);
         border-radius: 50% 50% 50% 50% / 62% 62% 38% 38%;
         transform: rotate(-2deg);
         animation: btl-markflick 2.2s ease-in-out infinite;
-        box-shadow: 0 0 6px hsl(var(--btl-hue) 95% 60% / 0.5);
+        box-shadow: 0 0 8px hsl(var(--btl-hue) 98% 62% / 0.8), 0 0 3px hsl(var(--btl-hue) 100% 78% / 0.9);
       }
       @keyframes btl-markflick {
         0%,100% { transform: rotate(-2deg) scaleY(1); opacity: 1; }
