@@ -105,5 +105,15 @@ export async function sendChat({ sessionId, message, repoFullName, context, repo
     context,
     repos
   });
-  return res.data; // { reply, open_repo, session_id, sequence_number }
+  return res.data; // { reply, open_repo, pr_proposal, session_id, sequence_number }
+}
+
+export async function openPr({ repoFullName, title, body, changes }) {
+  const res = await base44.functions.invoke('github-pr', {
+    repo_full_name: repoFullName,
+    title,
+    body,
+    changes
+  });
+  return res.data; // { ok, pr_url, number, branch, files }
 }

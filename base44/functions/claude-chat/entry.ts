@@ -163,27 +163,57 @@ Deno.serve(async (req) => {
     // Give Byteling the openable-repo list and a tool to switch the workspace,
     // so "open my Nexus app" resolves to an exact repo and signals the frontend.
     let system = SYSTEM_PROMPT;
-    let tools;
+    const tools = [];
+
     if (repos.length) {
       const list = repos
         .map((r) => (r.description ? `- ${r.full_name} — ${r.description}` : `- ${r.full_name}`))
         .join('\n');
       system += `\n\nRepositories you can open for the user:\n${list}\n\nWhen the user asks to open, switch to, or look at one you can identify from this list, say one short line first (e.g. "Opening Nexus — reading it now."), then call the open_repo tool with its exact full_name. If the reference is ambiguous between several, ask which they mean instead of guessing.`;
-      tools = [
-        {
-          name: 'open_repo',
-          description:
-            "Open/switch the workspace to one of the user's repositories so you can read it. repo_full_name must be an exact full_name from the provided list.",
-          input_schema: {
-            type: 'object',
-            properties: {
-              repo_full_name: { type: 'string', description: 'Exact owner/repo from the list' }
-            },
-            required: ['repo_full_name'],
-            additionalProperties: false
-          }
+      tools.push({
+        name: 'open_repo',
+        description:
+          "Open/switch the workspace to one of the user's repositories so you can read it. repo_full_name must be an exact full_name from the provided list.",
+        input_schema: {
+          type: 'object',
+          properties: {
+            repo_full_name: { type: 'string', description: 'Exact owner/repo from the list' }
+          },
+          required: ['repo_full_name'],
+          additionalProperties: false
         }
-      ];
+      });
+    }
+
+    if (repoFullName) {
+      system += `\n\nOpening a pull request: if the user asks you to change or fix something and open a PR, you MUST call the propose_pr tool this turn — describing the change in words does not make it happen, only propose_pr does. Say one short line about the fix, then call propose_pr with the COMPLETE new content of each changed file (a full file, never a diff). Change only what the fix needs. If you don't have the current contents of a file you'd need to change, ask for it first and do NOT call propose_pr. Never claim a PR is open — propose_pr hands the change to the user to confirm and open.`;
+      tools.push({
+        name: 'propose_pr',
+        description:
+          'Propose a fix as a pull request for the user to confirm. Provide the complete new content for each changed file. Only use when the user wants a fix opened as a PR and you have the real file contents to change.',
+        input_schema: {
+          type: 'object',
+          properties: {
+            title: { type: 'string', description: 'Short PR title' },
+            body: { type: 'string', description: 'What changed and why' },
+            changes: {
+              type: 'array',
+              description: 'Each changed file with its complete new content',
+              items: {
+                type: 'object',
+                properties: {
+                  path: { type: 'string' },
+                  content: { type: 'string', description: 'Complete new file content' }
+                },
+                required: ['path', 'content'],
+                additionalProperties: false
+              }
+            }
+          },
+          required: ['title', 'body', 'changes'],
+          additionalProperties: false
+        }
+      });
     }
 
     // Anti-repeat: hand back the last reply's opening so Byteling doesn't fall
@@ -206,7 +236,7 @@ Deno.serve(async (req) => {
         output_config: { effort: 'medium' },
         system,
         messages: anthropicMessages,
-        ...(tools ? { tools } : {})
+        ...(tools.length ? { tools } : {})
       });
       final = await stream.finalMessage();
     } catch (e) {
@@ -233,14 +263,31 @@ Deno.serve(async (req) => {
       .join('')
       .trim();
 
-    // Harvest an open_repo request, validated against the list we offered so a
-    // stray value can't point the frontend at an arbitrary repo.
+    // Harvest tool calls. open_repo is validated against the offered list so a
+    // stray value can't point the frontend at an arbitrary repo. propose_pr is
+    // returned for the user to confirm — this function never opens the PR.
     let openRepo: string | undefined;
+    let prProposal: { title: string; body: string; changes: { path: string; content: string }[] } | undefined;
     for (const block of final.content) {
-      if (block.type === 'tool_use' && block.name === 'open_repo') {
+      if (block.type !== 'tool_use') continue;
+      if (block.name === 'open_repo') {
         const target = (block.input as { repo_full_name?: unknown })?.repo_full_name;
         if (typeof target === 'string' && repos.some((r) => r.full_name === target)) {
           openRepo = target;
+        }
+      } else if (block.name === 'propose_pr') {
+        const inp = block.input as { title?: unknown; body?: unknown; changes?: unknown };
+        const changes = Array.isArray(inp.changes)
+          ? inp.changes.filter(
+              (c) => c && typeof (c as { path?: unknown }).path === 'string' && typeof (c as { content?: unknown }).content === 'string'
+            )
+          : [];
+        if (typeof inp.title === 'string' && inp.title.trim() && changes.length) {
+          prProposal = {
+            title: inp.title.trim(),
+            body: typeof inp.body === 'string' ? inp.body : '',
+            changes: changes as { path: string; content: string }[]
+          };
         }
       }
     }
@@ -279,6 +326,7 @@ Deno.serve(async (req) => {
     return Response.json({
       reply,
       open_repo: openRepo,
+      pr_proposal: prProposal,
       session_id: sessionId ?? undefined,
       sequence_number: assistantSeq
     });
