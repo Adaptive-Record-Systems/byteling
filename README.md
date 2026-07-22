@@ -4,9 +4,9 @@
 
 A quiet, lightly magical companion that lives beside your repo and helps you read, fix, and ship code.
 
-Use this repository to run and edit the app locally, then publish changes back through Base44.
+**Live app:** https://byteling-baas-417f0fd8.base44.app
 
-Any change pushed to the repo will also be reflected in the Base44 Builder.
+Byteling is a **custom React frontend** running on a **Base44 backend created with the CLI** (`npx base44 create`). Base44 provides the backend only — authentication & user management, entities (database), backend functions, and LLM/agent calls — while all UI code lives in this repository.
 
 ## Prerequisites
 
@@ -64,13 +64,16 @@ VITE_BASE44_APP_BASE_URL=https://your-app.base44.app
 
 When you use `base44 dev`, the command injects the local Base44 values for you, so `.env.local` is mainly needed for frontend-only workflows.
 
-## Publish Your Changes
+## Deploy
 
-After pushing your changes to git, open the Base44 dashboard and publish the app:
+Build the frontend, then deploy the backend resources and the built site to the app:
 
 ```bash
-base44 dashboard open
+npm run build
+base44 deploy --app-id <your_app_id> --yes
 ```
+
+`base44 deploy` pushes entities, functions, auth config, and the site (`./dist`) to the Base44 app. The live app reflects the last `base44 deploy` — a git merge alone does not redeploy it.
 
 ## Docs & Support
 
