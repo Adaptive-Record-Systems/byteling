@@ -53,7 +53,8 @@ export function Lantern({ mood = 'resting', pulse, hue = null, className = '', f
   }, [pulse]);
 
   // Background tabs pause the flame video; a screen-blended <video> then shows
-  // a stale/torn frame on return. Resume + nudge a repaint when visible again.
+  // a stale/torn frame on return. Resuming playback alone doesn't always repaint
+  // the blended layer, so also nudge the current frame to force a fresh paint.
   useEffect(() => {
     if (!flameVideo) return;
     const kick = () => {
@@ -61,12 +62,20 @@ export function Lantern({ mood = 'resting', pulse, hue = null, className = '', f
       if (!v || document.visibilityState !== 'visible') return;
       const p = v.play();
       if (p && p.catch) p.catch(() => {});
+      // Re-seek a hair so the compositor repaints the screen-blended surface and
+      // drops the stale frame left over from being backgrounded.
+      if (v.readyState >= 2) {
+        try { v.currentTime = Math.max(0, v.currentTime - 0.04); } catch { /* ignore */ }
+      }
     };
-    document.addEventListener('visibilitychange', kick);
-    window.addEventListener('focus', kick);
+    const onRestore = () => { kick(); setTimeout(kick, 150); };
+    document.addEventListener('visibilitychange', onRestore);
+    window.addEventListener('focus', onRestore);
+    window.addEventListener('pageshow', onRestore);
     return () => {
-      document.removeEventListener('visibilitychange', kick);
-      window.removeEventListener('focus', kick);
+      document.removeEventListener('visibilitychange', onRestore);
+      window.removeEventListener('focus', onRestore);
+      window.removeEventListener('pageshow', onRestore);
     };
   }, [flameVideo]);
 
@@ -81,7 +90,7 @@ export function Lantern({ mood = 'resting', pulse, hue = null, className = '', f
       className={`btl-lantern btl-${state} ${wingsOpen ? 'btl-wings-open' : ''} ${className}`}
       style={{ '--btl-hue': tint, '--btl-size': typeof size === 'number' ? `${size}px` : size }}
       role="img"
-      aria-label={`Byteling — ${reaction || mood}`}
+      aria-label={`Byte-ling — ${reaction || mood}`}
     >
       {/* wings-shut base */}
       <img className="btl-body btl-body-rest" src={bodyRest} alt="" draggable="false" />

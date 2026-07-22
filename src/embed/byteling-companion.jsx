@@ -34,8 +34,8 @@ function EmbedApp({ hue, size }) {
       style={{ display: 'inline-block', cursor: 'pointer', lineHeight: 0 }}
       onClick={react}
       role="button"
-      aria-label="Byteling"
-      title="Byteling"
+      aria-label="Byte-ling"
+      title="Byte-ling"
     >
       <Lantern mood="resting" pulse={pulse} hue={hue} size={size} />
     </div>

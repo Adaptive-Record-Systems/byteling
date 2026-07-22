@@ -93,7 +93,7 @@ export default function ApiKeyCard({ onChange }) {
               </div>
             )}
             <p className="text-sm text-muted-foreground">
-              Byteling uses your own Anthropic key. Paste it below — it&apos;s validated, stored
+              Byte-ling uses your own Anthropic key. Paste it below — it&apos;s validated, stored
               server-side, and never displayed again. Get one at{' '}
               <span className="font-mono">console.anthropic.com</span>.
             </p>

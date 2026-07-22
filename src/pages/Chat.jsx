@@ -223,7 +223,7 @@ export default function Chat() {
           <span className="w-7 h-7 rounded-lg bg-primary/5 flex items-center justify-center text-lg">
             <FlameMark hue={lanternHue ?? 200} />
           </span>
-          <h1 className="text-lg font-heading font-bold">Byteling</h1>
+          <h1 className="text-lg font-heading font-bold">Byte-ling</h1>
 
           <Popover open={repoPickerOpen} onOpenChange={setRepoPickerOpen}>
             <PopoverTrigger asChild>
@@ -383,7 +383,7 @@ export default function Chat() {
         {/* Composer — always available */}
         <div className="mt-3 flex items-end gap-2">
           <Textarea
-            placeholder={repo ? `Ask about ${repo.full_name}…` : 'Ask Byteling to open a repo, or describe one…'}
+            placeholder={repo ? `Ask about ${repo.full_name}…` : 'Ask Byte-ling to open a repo, or describe one…'}
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={(e) => {
