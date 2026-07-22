@@ -137,12 +137,23 @@ export default function Chat() {
     setMessages((prev) => [...prev, { role: 'user', text }]);
     setSending(true);
     try {
+      // Ensure the repo list is loaded before we ask — if the mount fetch
+      // hasn't landed yet, get it inline so "open my X app" always resolves.
+      let repoList = repos;
+      if (!repoList.length) {
+        try {
+          repoList = await listRepos();
+          setRepos(repoList);
+        } catch {
+          repoList = [];
+        }
+      }
       const res = await sendChat({
         sessionId: repo?.session?.id,
         message: text,
         repoFullName: repo?.full_name,
         context: buildContext(),
-        repos: repos.map((r) => ({ full_name: r.full_name, description: r.description }))
+        repos: repoList.map((r) => ({ full_name: r.full_name, description: r.description }))
       });
       if (res.reply) setMessages((prev) => [...prev, { role: 'assistant', text: res.reply }]);
       if (res.open_repo) await loadRepo(res.open_repo, { keepThread: true });
