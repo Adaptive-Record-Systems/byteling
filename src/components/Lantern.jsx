@@ -151,7 +151,13 @@ function LanternStyles() {
 
       /* Flame lives inside the chamber, rising from the brass seat. The art is
          a flame on black; mix-blend-mode:screen makes the black disappear. */
-      .btl-flame-slot { position: absolute; inset: 0; pointer-events: none; }
+      /* Clip the flame to the chamber opening so it stays *inside* the vessel
+         and never renders in front of the surrounding frame — regardless of
+         flame size or the reach/flare animations. */
+      .btl-flame-slot {
+        position: absolute; inset: 0; pointer-events: none;
+        clip-path: ellipse(9.8% 11% at 50.5% 55%);
+      }
       .btl-flame-img {
         position: absolute;
         left: 50.5%; bottom: 30%;
