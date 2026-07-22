@@ -1,5 +1,9 @@
 # Base44 Project
 
+## Byteling
+
+A quiet, lightly magical companion that lives beside your repo and helps you read, fix, and ship code.
+
 Use this repository to run and edit the app locally, then publish changes back through Base44.
 
 Any change pushed to the repo will also be reflected in the Base44 Builder.
