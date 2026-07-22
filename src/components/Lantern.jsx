@@ -39,7 +39,7 @@ import flameImg from '@/assets/lantern/flame.png';
 const REACTION_MS = 1600;
 const WINGS_OPEN = new Set(['thinking', 'drift', 'notice', 'spark']);
 
-export function Lantern({ mood = 'resting', pulse, hue = null, className = '' }) {
+export function Lantern({ mood = 'resting', pulse, hue = null, className = '', flameVideo = null }) {
   const [reaction, setReaction] = useState(null);
   const lastPulse = useRef(null);
 
@@ -72,7 +72,20 @@ export function Lantern({ mood = 'resting', pulse, hue = null, className = '' })
           vanishes. Swap the <img> for a <video> loop later, same slot. */}
       <span className="btl-flame-slot">
         <span className="btl-flame-glow" />
-        <img className="btl-flame-img" src={flameImg} alt="" draggable="false" />
+        {flameVideo ? (
+          <video
+            className="btl-flame-img"
+            src={flameVideo}
+            poster={flameImg}
+            autoPlay
+            muted
+            loop
+            playsInline
+            aria-hidden="true"
+          />
+        ) : (
+          <img className="btl-flame-img" src={flameImg} alt="" draggable="false" />
+        )}
       </span>
       <LanternStyles />
     </div>
@@ -140,17 +153,19 @@ function LanternStyles() {
         transition: opacity .4s ease;
       }
 
-      /* Resting: alive but calm — a gentle breathing flicker in place. */
-      .btl-resting .btl-flame-img  { animation: btl-flicker 2.6s ease-in-out infinite; }
-      .btl-resting .btl-flame-glow { opacity: .6; animation: btl-breathe 3.4s ease-in-out infinite; }
+      /* Resting: alive but calm. The static image flickers via CSS; a <video>
+         flame supplies its own motion, so only img.btl-flame-img gets btl-flicker. */
+      .btl-resting img.btl-flame-img { animation: btl-flicker 2.6s ease-in-out infinite; }
+      .btl-resting .btl-flame-glow   { opacity: .6; animation: btl-breathe 3.4s ease-in-out infinite; }
 
       /* Thinking: quicker, busier flicker — Byteling is working, wings open. */
-      .btl-thinking .btl-flame-img  { animation: btl-flicker .7s ease-in-out infinite; }
-      .btl-thinking .btl-flame-glow { opacity: .62; animation: btl-breathe .9s ease-in-out infinite; }
+      .btl-thinking img.btl-flame-img { animation: btl-flicker .7s ease-in-out infinite; }
+      .btl-thinking .btl-flame-glow   { opacity: .62; animation: btl-breathe .9s ease-in-out infinite; }
 
       /* Dim: deep in flow — wings shut, flame shrinks to almost nothing. */
-      .btl-dim .btl-flame-img  { transform: translateX(-50%) scaleY(.5); opacity: .55; animation: btl-flicker 4.5s ease-in-out infinite; }
-      .btl-dim .btl-flame-glow { opacity: .12; }
+      .btl-dim .btl-flame-img      { transform: translateX(-50%) scaleY(.5); opacity: .55; }
+      .btl-dim img.btl-flame-img   { animation: btl-flicker 4.5s ease-in-out infinite; }
+      .btl-dim .btl-flame-glow     { opacity: .12; }
 
       /* Drift: repo opened — flame reaches up as the wings swing open. */
       .btl-drift .btl-flame-img  { animation: btl-reach 1.6s cubic-bezier(.3,.7,.2,1); }
