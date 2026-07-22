@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import bodyRest from '@/assets/lantern/body-rest.png';
 import bodyOpen from '@/assets/lantern/body-open.png';
+import flameImg from '@/assets/lantern/flame.png';
 
 /**
  * Byteling's character: a small hanging lantern with a living flame.
@@ -50,8 +51,9 @@ export function Lantern({ mood = 'resting', pulse, hue = null, className = '' })
     return () => clearTimeout(t);
   }, [pulse]);
 
-  // The flame carries a faint tint from the open repo; amber when none is open.
-  const tint = hue == null ? 42 : hue;
+  // The flame carries a tint from the open repo; the art is blue (~200), so
+  // that's the default and per-repo hues rotate the flame away from it.
+  const tint = hue == null ? 200 : hue;
   const state = reaction || mood;
   const wingsOpen = WINGS_OPEN.has(state);
 
@@ -66,10 +68,11 @@ export function Lantern({ mood = 'resting', pulse, hue = null, className = '' })
       <img className="btl-body btl-body-rest" src={bodyRest} alt="" draggable="false" />
       {/* wings-open overlay, cross-faded in when a reaction engages */}
       <img className="btl-body btl-body-open" src={bodyOpen} alt="" draggable="false" />
-      {/* the living flame — sits on the chamber seat. Swap for a <video> later. */}
+      {/* the living flame — a flame-on-black render, screen-blended so the black
+          vanishes. Swap the <img> for a <video> loop later, same slot. */}
       <span className="btl-flame-slot">
         <span className="btl-flame-glow" />
-        <span className="btl-flame-shape" />
+        <img className="btl-flame-img" src={flameImg} alt="" draggable="false" />
       </span>
       <LanternStyles />
     </div>
@@ -77,7 +80,7 @@ export function Lantern({ mood = 'resting', pulse, hue = null, className = '' })
 }
 
 /** A tiny inline flame, for headers/avatars where the full lantern is too big. */
-export function FlameMark({ className = '', hue = 42 }) {
+export function FlameMark({ className = '', hue = 200 }) {
   return (
     <span className={`btl-mark ${className}`} style={{ '--btl-hue': hue }} aria-hidden="true">
       <span className="btl-mark-flame" />
@@ -94,10 +97,9 @@ function LanternStyles() {
         display: inline-block;
         width: 128px;
         aspect-ratio: 1 / 1;
-        --flame: hsl(var(--btl-hue) 92% 62%);
-        --flame-hot: hsl(calc(var(--btl-hue) + 10) 100% 80%);
-        --flame-core: hsl(calc(var(--btl-hue) + 22) 100% 94%);
         --glow: hsl(var(--btl-hue) 95% 62%);
+        /* the flame art is blue (~200); per-repo hue rotates it away from blue */
+        --flame-rot: calc((var(--btl-hue) - 200) * 1deg);
       }
       .btl-body {
         position: absolute;
@@ -114,63 +116,53 @@ function LanternStyles() {
       .btl-wings-open .btl-body-open { opacity: 1; }
       .btl-wings-open .btl-body-rest { opacity: 0; }
 
-      /* Flame slot — anchored over the brass seat inside the chamber.
-         (Seat sits at ~50% x, ~63% y of the square art.) */
-      .btl-flame-slot {
+      /* Flame lives inside the chamber, rising from the brass seat. The art is
+         a flame on black; mix-blend-mode:screen makes the black disappear. */
+      .btl-flame-slot { position: absolute; inset: 0; pointer-events: none; }
+      .btl-flame-img {
         position: absolute;
-        left: 50.5%;
-        top: 64%;
-        width: 26%;
-        height: 23%;
-        transform: translate(-50%, -100%);
-        pointer-events: none;
+        left: 50.5%; bottom: 30%;
+        width: 34%; height: auto;
+        transform: translateX(-50%);
+        transform-origin: 50% 100%;
+        mix-blend-mode: screen;
+        filter: hue-rotate(var(--flame-rot));
       }
       .btl-flame-glow {
         position: absolute;
-        left: 50%; bottom: -8%;
-        width: 210%; height: 180%;
+        left: 50.5%; bottom: 30%;
+        width: 46%; height: 24%;
         transform: translateX(-50%);
-        background: radial-gradient(ellipse at 50% 75%, var(--glow) 0%, transparent 72%);
-        opacity: .6;
-        filter: blur(4px);
+        background: radial-gradient(ellipse at 50% 72%, var(--glow) 0%, transparent 72%);
+        opacity: .55;
+        filter: blur(5px);
         mix-blend-mode: screen;
         transition: opacity .4s ease;
       }
-      .btl-flame-shape {
-        position: absolute;
-        left: 50%; bottom: 0;
-        width: 62%; height: 100%;
-        transform: translateX(-50%);
-        transform-origin: 50% 100%;
-        background: radial-gradient(ellipse at 50% 78%,
-          var(--flame-core) 0%, var(--flame-hot) 30%, var(--flame) 58%, transparent 100%);
-        border-radius: 50% 50% 48% 48% / 62% 62% 38% 38%;
-        mix-blend-mode: screen;
-      }
 
       /* Resting: alive but calm — a gentle breathing flicker in place. */
-      .btl-resting .btl-flame-shape { animation: btl-flicker 2.6s ease-in-out infinite; }
-      .btl-resting .btl-flame-glow  { opacity: .68; animation: btl-breathe 3.4s ease-in-out infinite; }
+      .btl-resting .btl-flame-img  { animation: btl-flicker 2.6s ease-in-out infinite; }
+      .btl-resting .btl-flame-glow { opacity: .6; animation: btl-breathe 3.4s ease-in-out infinite; }
 
       /* Thinking: quicker, busier flicker — Byteling is working, wings open. */
-      .btl-thinking .btl-flame-shape { animation: btl-flicker .7s ease-in-out infinite; }
-      .btl-thinking .btl-flame-glow  { opacity: .6; animation: btl-breathe .9s ease-in-out infinite; }
+      .btl-thinking .btl-flame-img  { animation: btl-flicker .7s ease-in-out infinite; }
+      .btl-thinking .btl-flame-glow { opacity: .62; animation: btl-breathe .9s ease-in-out infinite; }
 
       /* Dim: deep in flow — wings shut, flame shrinks to almost nothing. */
-      .btl-dim .btl-flame-shape { transform: translateX(-50%) scaleY(.45); opacity: .5; animation: btl-flicker 4.5s ease-in-out infinite; }
-      .btl-dim .btl-flame-glow  { opacity: .12; }
+      .btl-dim .btl-flame-img  { transform: translateX(-50%) scaleY(.5); opacity: .55; animation: btl-flicker 4.5s ease-in-out infinite; }
+      .btl-dim .btl-flame-glow { opacity: .12; }
 
       /* Drift: repo opened — flame reaches up as the wings swing open. */
-      .btl-drift .btl-flame-shape { animation: btl-reach 1.6s cubic-bezier(.3,.7,.2,1); }
-      .btl-drift .btl-flame-glow  { opacity: .7; }
+      .btl-drift .btl-flame-img  { animation: btl-reach 1.6s cubic-bezier(.3,.7,.2,1); }
+      .btl-drift .btl-flame-glow { opacity: .72; }
 
       /* Notice: a fix is proposed — flame leans in, curious. */
-      .btl-notice .btl-flame-shape { animation: btl-lean 1.6s ease-in-out; }
-      .btl-notice .btl-flame-glow  { opacity: .66; }
+      .btl-notice .btl-flame-img  { animation: btl-lean 1.6s ease-in-out; }
+      .btl-notice .btl-flame-glow { opacity: .66; }
 
       /* Spark: a PR landed — a bright, celebratory flare. */
-      .btl-spark .btl-flame-shape { background: radial-gradient(ellipse at 50% 78%, #fff 0%, var(--flame-core) 30%, var(--flame-hot) 60%, transparent 100%); animation: btl-flare 1.6s cubic-bezier(.2,.9,.2,1); }
-      .btl-spark .btl-flame-glow  { opacity: .95; }
+      .btl-spark .btl-flame-img  { filter: hue-rotate(var(--flame-rot)) brightness(1.4); animation: btl-flare 1.6s cubic-bezier(.2,.9,.2,1); }
+      .btl-spark .btl-flame-glow { opacity: .95; }
 
       @keyframes btl-flicker {
         0%, 100% { transform: translateX(-50%) scaleY(1) scaleX(1); }
