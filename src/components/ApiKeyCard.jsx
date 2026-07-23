@@ -5,10 +5,19 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { KeyRound, CheckCircle2, Loader2, AlertTriangle } from 'lucide-react';
 
+// Reasoning depth options, framed for people (not "effort"/"xhigh"). Higher =
+// more thorough reasoning, more tokens billed to their own key.
+const DEPTH_OPTIONS = [
+  { value: 'medium', label: 'Fast', hint: 'quicker, cheaper' },
+  { value: 'high', label: 'Balanced', hint: 'recommended' },
+  { value: 'xhigh', label: 'Deep', hint: 'most thorough, more tokens' }
+];
+
 /**
  * Bring-your-own-key card. Shows the stored key's hint + status, or an input to
  * add/replace it. The raw key is never read back (field-locked); we only ever
  * see key_hint. onChange(key) lets the parent react to connect/disconnect.
+ * Also carries the per-user reasoning-depth setting (effort) on that key.
  */
 export default function ApiKeyCard({ onChange }) {
   const [providerKey, setProviderKeyState] = useState(null);
@@ -17,12 +26,15 @@ export default function ApiKeyCard({ onChange }) {
   const [value, setValue] = useState('');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState(null);
+  const [effort, setEffort] = useState('high');
+  const [savingEffort, setSavingEffort] = useState(false);
 
   const refresh = async () => {
     setLoading(true);
     try {
       const key = await getProviderKey();
       setProviderKeyState(key);
+      setEffort(key?.effort || 'high');
       onChange?.(key);
     } catch (e) {
       setError(errInfo(e).message);
@@ -42,7 +54,7 @@ export default function ApiKeyCard({ onChange }) {
     setSaving(true);
     setError(null);
     try {
-      await setProviderKey(key);
+      await setProviderKey(key, effort);
       setValue('');
       setEditing(false);
       await refresh();
@@ -55,6 +67,49 @@ export default function ApiKeyCard({ onChange }) {
 
   const connected = providerKey && providerKey.status === 'active';
   const invalid = providerKey && providerKey.status === 'invalid';
+
+  // Pick a depth. When a key is already connected, persist immediately; while
+  // entering a new key, just hold the choice (save() sends it with the key).
+  const changeDepth = async (next) => {
+    setEffort(next);
+    if (connected && !editing) {
+      setSavingEffort(true);
+      setError(null);
+      try {
+        await setProviderKey(null, next);
+        await refresh();
+      } catch (e) {
+        setError(errInfo(e).message);
+      } finally {
+        setSavingEffort(false);
+      }
+    }
+  };
+
+  const depthSelector = (
+    <div>
+      <p className="text-sm font-medium text-foreground">Response depth</p>
+      <p className="text-xs text-muted-foreground mb-2">
+        How hard Byte-ling thinks. Deeper reasoning is more thorough but uses more tokens on your key.
+      </p>
+      <div className="flex flex-wrap gap-2">
+        {DEPTH_OPTIONS.map((o) => (
+          <Button
+            key={o.value}
+            size="sm"
+            variant={effort === o.value ? 'default' : 'outline'}
+            disabled={savingEffort}
+            onClick={() => changeDepth(o.value)}
+            className="flex flex-col items-start h-auto py-1.5"
+          >
+            <span className="text-xs font-medium">{o.label}</span>
+            <span className="text-[10px] opacity-70 font-normal">{o.hint}</span>
+          </Button>
+        ))}
+        {savingEffort && <Loader2 className="w-4 h-4 animate-spin self-center text-muted-foreground" />}
+      </div>
+    </div>
+  );
 
   return (
     <Card>
@@ -83,6 +138,7 @@ export default function ApiKeyCard({ onChange }) {
             <p className="text-xs text-muted-foreground">
               Your key is stored server-side and never shown again. Usage bills to your own Anthropic account.
             </p>
+            {depthSelector}
           </>
         ) : (
           <>
@@ -123,6 +179,7 @@ export default function ApiKeyCard({ onChange }) {
                 </Button>
               )}
             </div>
+            {depthSelector}
           </>
         )}
 

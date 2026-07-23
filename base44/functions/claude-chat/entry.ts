@@ -162,6 +162,11 @@ Deno.serve(async (req) => {
     }
     const apiKey = providerKey.api_key;
 
+    // Reasoning depth is a per-user setting on their key (default high — the
+    // recommended minimum for code work on Opus 4.8). Falls back if unset/invalid.
+    const ALLOWED_EFFORT = ['low', 'medium', 'high', 'xhigh', 'max'];
+    const effort = ALLOWED_EFFORT.includes(providerKey.effort) ? providerKey.effort : 'high';
+
     let body: Record<string, unknown> = {};
     try {
       body = await req.json();
@@ -345,7 +350,7 @@ Deno.serve(async (req) => {
           model: MODEL,
           max_tokens: MAX_TOKENS,
           thinking: { type: 'adaptive' },
-          output_config: { effort: 'medium' },
+          output_config: { effort },
           system,
           messages: anthropicMessages,
           ...(offerTools.length ? { tools: offerTools } : {})

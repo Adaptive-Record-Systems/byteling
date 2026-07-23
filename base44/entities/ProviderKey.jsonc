@@ -39,6 +39,18 @@
       ],
       "default": "active",
       "description": "Set to 'invalid' if the provider later rejects the key"
+    },
+    "effort": {
+      "type": "string",
+      "enum": [
+        "low",
+        "medium",
+        "high",
+        "xhigh",
+        "max"
+      ],
+      "default": "high",
+      "description": "Reasoning depth (output_config.effort) claude-chat runs at for this user. Higher = more thorough, more tokens billed to their key. Not secret; readable by the owner."
     }
   },
   "required": [
