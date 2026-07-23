@@ -170,7 +170,11 @@ function LanternStyles() {
       .btl-flame-img {
         position: absolute;
         left: 50.5%; bottom: 30%;
-        width: 29%; height: auto;
+        width: 29%;
+        aspect-ratio: 1 / 1; /* flame assets are square; fixes the video going
+                                scrunched after a background tab drops its size */
+        height: auto;
+        object-fit: cover;
         transform: translateX(-50%);
         transform-origin: 50% 100%;
         mix-blend-mode: screen;
