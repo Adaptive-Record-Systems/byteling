@@ -23,12 +23,14 @@ export async function getProviderKey() {
   return rows.find((r) => r.provider === 'anthropic') || null;
 }
 
-export async function setProviderKey(apiKey) {
-  const res = await base44.functions.invoke('set-provider-key', {
-    provider: 'anthropic',
-    api_key: apiKey
-  });
-  return res.data; // { ok, provider, key_hint, status }
+// Pass apiKey to set/replace the key; pass effort to set the reasoning depth.
+// effort alone (apiKey null) updates depth on an already-connected key.
+export async function setProviderKey(apiKey, effort) {
+  const payload = { provider: 'anthropic' };
+  if (apiKey) payload.api_key = apiKey;
+  if (effort) payload.effort = effort;
+  const res = await base44.functions.invoke('set-provider-key', payload);
+  return res.data; // { ok, provider, key_hint, status, effort }
 }
 
 // --- GitHub connection ---
