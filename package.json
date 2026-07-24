@@ -12,7 +12,9 @@
     "lint": "eslint . --quiet",
     "lint:fix": "eslint . --fix",
     "typecheck": "tsc -p ./jsconfig.json",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "sync": "git checkout main && git pull",
+    "deploy:live": "vite build && vite build --config vite.embed.config.js && base44 deploy --app-id 6a61038cc4bec6bf417f0fd8 --yes"
   },
   "dependencies": {
     "@base44/sdk": "^0.8.40",
