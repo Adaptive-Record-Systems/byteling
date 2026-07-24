@@ -8,29 +8,31 @@
     :root {
       --bg:#0e0e10; --card:#161619; --card2:#1c1c20; --line:#2a2a31;
       --fg:#ececed; --muted:#a2a2ac; --faint:#6f6f79; --accent:#c9a24b;
+      --ok:#4caf7d; --bad:#e07a5f;
       color-scheme: dark light;
     }
     @media (prefers-color-scheme: light) {
-      :root { --bg:#f7f7f9; --card:#fff; --card2:#f2f2f5; --line:#e6e6ea; --fg:#17171b; --muted:#5c5c66; --faint:#9a9aa4; --accent:#b8860b; }
+      :root { --bg:#f7f7f9; --card:#fff; --card2:#f2f2f5; --line:#e6e6ea; --fg:#17171b; --muted:#5c5c66; --faint:#9a9aa4; --accent:#b8860b; --ok:#2e9e6b; --bad:#c85c40; }
     }
     * { box-sizing: border-box; }
     body {
       margin:0; background:var(--bg); color:var(--fg);
       font-family: ui-sans-serif, system-ui, -apple-system, sans-serif; line-height:1.6;
     }
-    .wrap { max-width: 720px; margin: 0 auto; padding: 64px 20px 120px; }
+    .wrap { max-width: 760px; margin: 0 auto; padding: 64px 20px 120px; }
     h1 { font-size: 30px; font-weight: 800; margin: 0 0 8px; letter-spacing:-.01em; }
-    .sub { color: var(--muted); font-size: 16px; margin: 0 0 40px; max-width: 40rem; }
-    h2 { font-size: 15px; font-weight: 700; text-transform: uppercase; letter-spacing:.06em; color: var(--faint); margin: 40px 0 12px; }
+    .sub { color: var(--muted); font-size: 16px; margin: 0 0 8px; max-width: 42rem; }
+    h2 { font-size: 15px; font-weight: 700; text-transform: uppercase; letter-spacing:.06em; color: var(--faint); margin: 44px 0 14px; }
     p { color: var(--muted); }
-    .step { display:flex; gap:12px; align-items:flex-start; }
-    .num { flex:0 0 auto; width:24px; height:24px; border-radius:50%; background:var(--accent); color:#17130a; font-weight:800; font-size:13px; display:flex; align-items:center; justify-content:center; margin-top:2px; }
+    .step { display:flex; gap:14px; align-items:flex-start; }
+    .num { flex:0 0 auto; width:26px; height:26px; border-radius:50%; background:var(--accent); color:#17130a; font-weight:800; font-size:14px; display:flex; align-items:center; justify-content:center; margin-top:1px; }
+    .stepbody { flex:1; min-width:0; }
     .card { background:var(--card); border:1px solid var(--line); border-radius:14px; padding:16px 18px; }
     .snip { position:relative; background:var(--card2); border:1px solid var(--line); border-radius:12px; padding:14px 46px 14px 16px; overflow-x:auto; }
     .snip code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size:13px; color:var(--fg); white-space:pre; }
     .copy { position:absolute; top:8px; right:8px; border:1px solid var(--line); background:var(--card); color:var(--muted); font:inherit; font-size:11px; font-weight:600; padding:4px 9px; border-radius:7px; cursor:pointer; }
     .copy:hover { color:var(--fg); }
-    .copy.ok { color:#4caf7d; border-color:#4caf7d; }
+    .copy.ok { color:var(--ok); border-color:var(--ok); }
     .tag { display:inline-block; font-size:11px; font-weight:700; color:var(--accent); background:color-mix(in srgb, var(--accent) 16%, transparent); padding:2px 8px; border-radius:999px; margin-bottom:10px; }
     table { width:100%; border-collapse:collapse; font-size:14px; margin-top:6px; }
     th,td { text-align:left; padding:9px 10px; border-bottom:1px solid var(--line); vertical-align:top; }
@@ -41,34 +43,190 @@
     .foot { margin-top:56px; color:var(--faint); font-size:13px; }
     a { color: var(--accent); }
     .lead { color: var(--fg); font-weight:600; }
+
+    /* Platform picker */
+    .picker { display:flex; flex-wrap:wrap; gap:8px; margin:0 0 16px; }
+    .pill { border:1px solid var(--line); background:var(--card); color:var(--muted); font:inherit; font-size:13.5px; font-weight:600; padding:8px 14px; border-radius:999px; cursor:pointer; display:flex; align-items:center; gap:7px; }
+    .pill:hover { color:var(--fg); }
+    .pill[aria-selected="true"] { border-color:var(--accent); color:var(--fg); background:color-mix(in srgb, var(--accent) 12%, transparent); }
+    .pill .dot { font-size:14px; }
+    .panel { display:none; }
+    .panel.active { display:block; }
+    .panel ol { margin:2px 0 0; padding-left:20px; color:var(--muted); font-size:14.5px; }
+    .panel ol li { margin:6px 0; }
+    .panel ol li b { color:var(--fg); font-weight:600; }
+    .walk { margin:16px 0 0; border:1px solid var(--line); border-radius:12px; overflow:hidden; background:var(--card2); }
+    .walk img { display:block; width:100%; height:auto; }
+    .walk figcaption { font-size:12px; color:var(--faint); padding:8px 12px; border-top:1px solid var(--line); }
+
+    /* Verifier */
+    .verify { display:flex; gap:8px; flex-wrap:wrap; }
+    .verify input { flex:1; min-width:220px; background:var(--card2); border:1px solid var(--line); color:var(--fg); font:inherit; font-size:14px; padding:11px 13px; border-radius:10px; }
+    .verify input:focus { outline:none; border-color:var(--accent); }
+    .btn { border:1px solid var(--accent); background:var(--accent); color:#17130a; font:inherit; font-size:14px; font-weight:700; padding:11px 18px; border-radius:10px; cursor:pointer; white-space:nowrap; }
+    .btn:hover { filter:brightness(1.06); }
+    .btn.ghost { background:transparent; color:var(--fg); border-color:var(--line); }
+    .btn:disabled { opacity:.6; cursor:default; }
+    .result { margin-top:14px; font-size:14.5px; display:none; align-items:flex-start; gap:9px; padding:13px 15px; border-radius:11px; border:1px solid var(--line); }
+    .result.show { display:flex; }
+    .result.good { border-color:var(--ok); background:color-mix(in srgb, var(--ok) 10%, transparent); }
+    .result.bad { border-color:var(--bad); background:color-mix(in srgb, var(--bad) 10%, transparent); }
+    .result .ic { font-size:17px; line-height:1.4; }
+    .result b { color:var(--fg); }
+
+    /* Bookmarklet */
+    .bm { display:inline-flex; align-items:center; gap:8px; border:1px dashed var(--accent); background:color-mix(in srgb, var(--accent) 10%, transparent); color:var(--fg); font-weight:700; font-size:14px; padding:10px 16px; border-radius:10px; text-decoration:none; cursor:grab; }
+    .bm:active { cursor:grabbing; }
+    .row { display:flex; gap:12px; flex-wrap:wrap; align-items:center; }
   </style>
 </head>
 <body>
   <div class="wrap">
     <span class="tag">🔥 Byte-ling</span>
     <h1>Add Byte-ling to your app</h1>
-    <p class="sub">A little coding companion that lives in the corner of your app. Your visitors sign in with their own account and their own Anthropic key — you don't manage any keys or servers. Byte-ling is already docked in the corner of <em>this</em> page (that's the one-liner below at work).</p>
+    <p class="sub">A little coding companion that lives in the corner of your app. It takes about <b style="color:var(--fg)">30 seconds</b> and one copy-paste — no servers, no keys for <em>you</em> to manage. Byte-ling is already docked in the corner of <em>this</em> page (that's the one line below, doing its thing).</p>
 
-    <h2>The one line</h2>
+    <!-- ───────────────── Step 1: the one line ───────────────── -->
+    <h2>Step 1 · Copy the one line</h2>
     <div class="step">
       <div class="num">1</div>
-      <div style="flex:1; min-width:0;">
-        <p class="lead" style="margin:2px 0 10px;">Paste this once, anywhere on your page. That's it.</p>
+      <div class="stepbody">
+        <p class="lead" style="margin:2px 0 10px;">This is the whole install. Copy it once.</p>
         <div class="snip" data-copy>
           <code>&lt;script src="https://byteling-baas-417f0fd8.base44.app/embed.js"&gt;&lt;/script&gt;</code>
           <button class="copy">Copy</button>
         </div>
-        <p style="margin-top:10px; font-size:14px;">The companion appears automatically in the bottom-right corner. Nothing else to add.</p>
       </div>
     </div>
 
-    <h2>Where does it go?</h2>
-    <div class="card">
-      <p style="margin:0 0 4px;"><b style="color:var(--fg)">Any website / plain HTML</b> — paste it just before the closing <code style="font-size:12.5px">&lt;/body&gt;</code> tag.</p>
-      <p style="margin:12px 0 4px;"><b style="color:var(--fg)">A Base44 app</b> — drop it into your page's HTML (or a custom-code / embed block). It loads cross-origin, so it just works.</p>
-      <p style="margin:12px 0 0;"><b style="color:var(--fg)">React / Vue / Next</b> — add the same <code style="font-size:12.5px">&lt;script&gt;</code> to your root <code style="font-size:12.5px">index.html</code>, or load it once when the app mounts.</p>
+    <!-- ───────────────── Step 2: where does it go? ───────────────── -->
+    <h2>Step 2 · Paste it — pick what you built with</h2>
+    <div class="step">
+      <div class="num">2</div>
+      <div class="stepbody">
+        <p style="margin:2px 0 14px;">Not sure where the code goes? Choose your builder and follow the pictures.</p>
+
+        <div class="picker" role="tablist" aria-label="What did you build with?">
+          <button class="pill" role="tab" data-target="base44" aria-selected="true"><span class="dot">🟦</span>Base44</button>
+          <button class="pill" role="tab" data-target="wordpress" aria-selected="false"><span class="dot">🟨</span>WordPress</button>
+          <button class="pill" role="tab" data-target="wix" aria-selected="false"><span class="dot">⬛</span>Wix</button>
+          <button class="pill" role="tab" data-target="squarespace" aria-selected="false"><span class="dot">⬜</span>Squarespace</button>
+          <button class="pill" role="tab" data-target="html" aria-selected="false"><span class="dot">📄</span>Plain HTML</button>
+          <button class="pill" role="tab" data-target="react" aria-selected="false"><span class="dot">⚛️</span>React / Next</button>
+        </div>
+
+        <div class="panel active" id="p-base44" role="tabpanel">
+          <ol>
+            <li>Open your app in the <b>Base44 editor</b>.</li>
+            <li>Add a <b>Custom Code</b> / <b>Embed HTML</b> block to any page (or open the page's HTML view).</li>
+            <li><b>Paste</b> the line and <b>Publish</b>.</li>
+            <li>That's it — it loads from another site, so nothing else to set up.</li>
+          </ol>
+          <figure class="walk" data-gif="base44" hidden>
+            <img alt="Where to paste the Byte-ling line in Base44" />
+            <figcaption>Paste → Publish in the Base44 editor.</figcaption>
+          </figure>
+        </div>
+
+        <div class="panel" id="p-wordpress" role="tabpanel">
+          <ol>
+            <li>In your dashboard, install the free <b>“Insert Headers and Footers”</b> plugin (or open <b>Appearance → Theme File Editor</b>).</li>
+            <li>Paste the line into the <b>Footer / Scripts in Footer</b> box.</li>
+            <li><b>Save</b>. Reload your site — Byte-ling appears bottom-right.</li>
+          </ol>
+          <figure class="walk" data-gif="wordpress" hidden>
+            <img alt="Where to paste the Byte-ling line in WordPress" />
+            <figcaption>Paste into the footer scripts box → Save.</figcaption>
+          </figure>
+        </div>
+
+        <div class="panel" id="p-wix" role="tabpanel">
+          <ol>
+            <li>In the editor, click <b>Add (+) → Embed &amp; Social → Embed a Widget</b>.</li>
+            <li>Choose <b>Enter Code</b> and <b>paste</b> the line.</li>
+            <li><b>Apply</b>, then <b>Publish</b> your site.</li>
+          </ol>
+          <figure class="walk" data-gif="wix" hidden>
+            <img alt="Where to paste the Byte-ling line in Wix" />
+            <figcaption>Embed a Widget → Enter Code → paste → Publish.</figcaption>
+          </figure>
+        </div>
+
+        <div class="panel" id="p-squarespace" role="tabpanel">
+          <ol>
+            <li>Go to <b>Settings → Advanced → Code Injection</b>.</li>
+            <li>Paste the line into the <b>Footer</b> box.</li>
+            <li><b>Save</b>. It shows on every page of your site.</li>
+          </ol>
+          <figure class="walk" data-gif="squarespace" hidden>
+            <img alt="Where to paste the Byte-ling line in Squarespace" />
+            <figcaption>Code Injection → Footer → paste → Save.</figcaption>
+          </figure>
+        </div>
+
+        <div class="panel" id="p-html" role="tabpanel">
+          <ol>
+            <li>Open your <code>.html</code> file.</li>
+            <li>Paste the line just before the closing <code>&lt;/body&gt;</code> tag.</li>
+            <li>Save and re-upload the file.</li>
+          </ol>
+          <figure class="walk" data-gif="html" hidden>
+            <img alt="Where to paste the Byte-ling line in a plain HTML file" />
+            <figcaption>Paste before &lt;/body&gt; → save.</figcaption>
+          </figure>
+        </div>
+
+        <div class="panel" id="p-react" role="tabpanel">
+          <ol>
+            <li>Add the <code>&lt;script&gt;</code> to your root <code>index.html</code> (Vite / CRA)…</li>
+            <li>…or in <b>Next.js</b>, drop a <code>&lt;Script src="…/embed.js" /&gt;</code> in <code>app/layout</code>.</li>
+            <li>Or load it once when the app mounts — any of these work.</li>
+          </ol>
+          <figure class="walk" data-gif="react" hidden>
+            <img alt="Where to add the Byte-ling script in a React or Next app" />
+            <figcaption>Root index.html, or a &lt;Script&gt; in the layout.</figcaption>
+          </figure>
+        </div>
+      </div>
     </div>
 
+    <!-- ───────────────── Step 3: did it work? ───────────────── -->
+    <h2>Step 3 · Did it work?</h2>
+    <div class="step">
+      <div class="num">3</div>
+      <div class="stepbody">
+        <p style="margin:2px 0 12px;">Paste your site's address and we'll check the page for you — no more guessing.</p>
+        <form class="verify" id="verifyForm">
+          <input type="url" id="verifyUrl" placeholder="yoursite.com" autocomplete="url" inputmode="url" />
+          <button class="btn" type="submit" id="verifyBtn">Check my site</button>
+        </form>
+        <div class="result" id="verifyResult"><span class="ic"></span><span class="msg"></span></div>
+        <p style="font-size:12.5px; color:var(--faint); margin-top:12px;">Checking looks at your page's HTML for the line. If your builder adds it only after the page loads, the check may say “not found yet” even when it's working — open your site and look for the lantern in the corner to be sure.</p>
+      </div>
+    </div>
+
+    <!-- ───────────────── Not a coder ───────────────── -->
+    <h2>Not a coder?</h2>
+    <div class="card">
+      <p style="margin:0 0 12px; color:var(--fg);">No problem — hand it to whoever manages your site. This sends them everything they need in one email.</p>
+      <button class="btn ghost" id="sendDev">✉️ Send the instructions to my developer</button>
+    </div>
+
+    <!-- ───────────────── Just for yourself ───────────────── -->
+    <h2>Or just want it for yourself?</h2>
+    <p style="margin-top:0;">Skip the install entirely and summon Byte-ling on <em>any</em> page you're looking at.</p>
+    <div class="card">
+      <div class="row">
+        <a class="bm" id="bookmarklet" href="javascript:void(0)" title="Drag me to your bookmarks bar">🏮 Byte-ling</a>
+        <div style="min-width:200px; flex:1;">
+          <p style="margin:0; color:var(--fg); font-weight:600;">Drag this button up to your bookmarks bar.</p>
+          <p style="margin:2px 0 0; font-size:13.5px;">Then click it on any website to make Byte-ling appear. Nothing to install.</p>
+        </div>
+      </div>
+      <p style="margin:14px 0 0; font-size:13.5px; color:var(--faint);">Prefer a real button in your browser? The <b style="color:var(--fg)">Chrome extension</b> adds a one-click Byte-ling to your toolbar — <a href="https://byteling-baas-417f0fd8.base44.app" target="_blank" rel="noreferrer">ask in the app</a> for the install link.</p>
+    </div>
+
+    <!-- ───────────────── Make it yours ───────────────── -->
     <h2>Make it yours (optional)</h2>
     <p style="margin-top:0;">Tint the flame or resize it right on the script tag:</p>
     <div class="snip" data-copy>
@@ -83,6 +241,7 @@
     </table>
     <p style="font-size:13.5px; color:var(--faint); margin-top:14px;">Want to place it in a specific spot instead of auto-corner? Add the tag yourself: <code style="font-size:12px">&lt;byteling-companion hue="210"&gt;&lt;/byteling-companion&gt;</code> — the script will use that one instead of adding its own.</p>
 
+    <!-- ───────────────── What visitors need ───────────────── -->
     <h2>What your visitors need</h2>
     <div class="note">
       <span>🔑</span>
@@ -95,6 +254,11 @@
   </div>
 
   <script>
+    const BYTELING_BASE = 'https://byteling-baas-417f0fd8.base44.app';
+    const BYTELING_APP_ID = '6a61038cc4bec6bf417f0fd8';
+    const ONE_LINER = '<script src="' + BYTELING_BASE + '/embed.js"><\/script>';
+
+    /* Copy buttons */
     document.querySelectorAll('[data-copy]').forEach((box) => {
       const btn = box.querySelector('.copy');
       const code = box.querySelector('code').textContent;
@@ -104,6 +268,85 @@
         setTimeout(() => { btn.textContent = 'Copy'; btn.classList.remove('ok'); }, 1600);
       });
     });
+
+    /* Platform picker */
+    const pills = document.querySelectorAll('.pill');
+    pills.forEach((pill) => {
+      pill.addEventListener('click', () => {
+        pills.forEach((p) => p.setAttribute('aria-selected', 'false'));
+        pill.setAttribute('aria-selected', 'true');
+        document.querySelectorAll('.panel').forEach((pnl) => pnl.classList.remove('active'));
+        document.getElementById('p-' + pill.dataset.target).classList.add('active');
+      });
+    });
+
+    /* Walkthrough GIFs: show a slot only if its image actually exists.
+       Drop files at /walkthroughs/<platform>.gif to light them up. */
+    document.querySelectorAll('.walk[data-gif]').forEach((fig) => {
+      const img = fig.querySelector('img');
+      const src = '/walkthroughs/' + fig.dataset.gif + '.gif';
+      img.addEventListener('load', () => { fig.hidden = false; });
+      img.addEventListener('error', () => { fig.remove(); });
+      img.src = src;
+    });
+
+    /* "Did it work?" verifier */
+    const form = document.getElementById('verifyForm');
+    const input = document.getElementById('verifyUrl');
+    const btn = document.getElementById('verifyBtn');
+    const result = document.getElementById('verifyResult');
+    function showResult(kind, icon, html) {
+      result.className = 'result show ' + kind;
+      result.querySelector('.ic').textContent = icon;
+      result.querySelector('.msg').innerHTML = html;
+    }
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const url = input.value.trim();
+      if (!url) { input.focus(); return; }
+      btn.disabled = true; btn.textContent = 'Checking…';
+      showResult('', '⏳', 'Looking at your page…');
+      try {
+        const res = await fetch(BYTELING_BASE + '/functions/verify-embed', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'X-App-Id': BYTELING_APP_ID },
+          body: JSON.stringify({ url })
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok || data.ok === false) {
+          showResult('bad', '⚠️', (data.error || 'Could not check that site.') + ' Double-check the address and try again.');
+        } else if (data.found) {
+          const host = (() => { try { return new URL(data.finalUrl).hostname; } catch { return 'your site'; } })();
+          showResult('good', '✅', '<b>Byte-ling is live on ' + host + '.</b> Open your site and look for the lantern in the corner.');
+        } else {
+          showResult('bad', '🔍', "<b>Not found yet.</b> The line isn't on that page. Make sure you saved / published, then check again. (Some builders only add it after the page loads — if you can see the lantern on your site, you're good.)");
+        }
+      } catch {
+        showResult('bad', '⚠️', 'Something went wrong reaching that site. Try again in a moment.');
+      } finally {
+        btn.disabled = false; btn.textContent = 'Check my site';
+      }
+    });
+
+    /* Send to developer */
+    document.getElementById('sendDev').addEventListener('click', () => {
+      const subject = 'Please add Byte-ling to our site';
+      const body =
+        "Hi,\n\nCan you add Byte-ling (a coding companion) to our site? It's one line, pasted before </body>:\n\n" +
+        ONE_LINER + "\n\n" +
+        "Full instructions: " + BYTELING_BASE + "/install.html\n\n" +
+        "Thanks!";
+      window.location.href = 'mailto:?subject=' + encodeURIComponent(subject) + '&body=' + encodeURIComponent(body);
+    });
+
+    /* Bookmarklet: build the javascript: href in code so the markup stays clean. */
+    (function () {
+      const code =
+        "(function(){if(window.__byteling)return;window.__byteling=1;" +
+        "var s=document.createElement('script');s.src='" + BYTELING_BASE + "/embed.js';" +
+        "s.setAttribute('data-size','72');(document.body||document.documentElement).appendChild(s);})();";
+      document.getElementById('bookmarklet').setAttribute('href', 'javascript:' + encodeURIComponent(code));
+    })();
   </script>
 
   <!-- The one-liner itself, live on this page. -->
