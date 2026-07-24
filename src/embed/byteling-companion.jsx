@@ -2,6 +2,10 @@ import React, { useEffect, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { Lantern, FlameMark } from '@/components/Lantern';
 
+// The <script> tag that loaded this bundle — captured at load so auto-mount can
+// read its data-* config (data-hue / data-size) even after DOM ready.
+const SELF_SCRIPT = typeof document !== 'undefined' ? document.currentScript : null;
+
 /**
  * <byteling-companion> — the embeddable Byteling companion.
  *
@@ -585,6 +589,22 @@ class BytelingCompanion extends HTMLElement {
 
 if (typeof customElements !== 'undefined' && !customElements.get('byteling-companion')) {
   customElements.define('byteling-companion', BytelingCompanion);
+}
+
+// One-line install: if the page just includes the script (no <byteling-companion>
+// tag of its own), auto-add one so the companion appears. Config can ride on the
+// script tag as data-hue / data-size. Devs who place the tag themselves opt out.
+function autoMount() {
+  if (typeof document === 'undefined' || document.querySelector('byteling-companion')) return;
+  const el = document.createElement('byteling-companion');
+  const ds = (SELF_SCRIPT && SELF_SCRIPT.dataset) || {};
+  if (ds.hue) el.setAttribute('hue', ds.hue);
+  if (ds.size) el.setAttribute('size', ds.size);
+  document.body.appendChild(el);
+}
+if (typeof document !== 'undefined') {
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', autoMount);
+  else autoMount();
 }
 
 export { BytelingCompanion };

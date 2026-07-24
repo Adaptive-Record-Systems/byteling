@@ -1,0 +1,112 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Add Byte-ling to your app</title>
+  <style>
+    :root {
+      --bg:#0e0e10; --card:#161619; --card2:#1c1c20; --line:#2a2a31;
+      --fg:#ececed; --muted:#a2a2ac; --faint:#6f6f79; --accent:#c9a24b;
+      color-scheme: dark light;
+    }
+    @media (prefers-color-scheme: light) {
+      :root { --bg:#f7f7f9; --card:#fff; --card2:#f2f2f5; --line:#e6e6ea; --fg:#17171b; --muted:#5c5c66; --faint:#9a9aa4; --accent:#b8860b; }
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin:0; background:var(--bg); color:var(--fg);
+      font-family: ui-sans-serif, system-ui, -apple-system, sans-serif; line-height:1.6;
+    }
+    .wrap { max-width: 720px; margin: 0 auto; padding: 64px 20px 120px; }
+    h1 { font-size: 30px; font-weight: 800; margin: 0 0 8px; letter-spacing:-.01em; }
+    .sub { color: var(--muted); font-size: 16px; margin: 0 0 40px; max-width: 40rem; }
+    h2 { font-size: 15px; font-weight: 700; text-transform: uppercase; letter-spacing:.06em; color: var(--faint); margin: 40px 0 12px; }
+    p { color: var(--muted); }
+    .step { display:flex; gap:12px; align-items:flex-start; }
+    .num { flex:0 0 auto; width:24px; height:24px; border-radius:50%; background:var(--accent); color:#17130a; font-weight:800; font-size:13px; display:flex; align-items:center; justify-content:center; margin-top:2px; }
+    .card { background:var(--card); border:1px solid var(--line); border-radius:14px; padding:16px 18px; }
+    .snip { position:relative; background:var(--card2); border:1px solid var(--line); border-radius:12px; padding:14px 46px 14px 16px; overflow-x:auto; }
+    .snip code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size:13px; color:var(--fg); white-space:pre; }
+    .copy { position:absolute; top:8px; right:8px; border:1px solid var(--line); background:var(--card); color:var(--muted); font:inherit; font-size:11px; font-weight:600; padding:4px 9px; border-radius:7px; cursor:pointer; }
+    .copy:hover { color:var(--fg); }
+    .copy.ok { color:#4caf7d; border-color:#4caf7d; }
+    .tag { display:inline-block; font-size:11px; font-weight:700; color:var(--accent); background:color-mix(in srgb, var(--accent) 16%, transparent); padding:2px 8px; border-radius:999px; margin-bottom:10px; }
+    table { width:100%; border-collapse:collapse; font-size:14px; margin-top:6px; }
+    th,td { text-align:left; padding:9px 10px; border-bottom:1px solid var(--line); vertical-align:top; }
+    th { color:var(--faint); font-weight:600; font-size:12px; text-transform:uppercase; letter-spacing:.05em; }
+    td code { font-family: ui-monospace, monospace; font-size:12.5px; background:var(--card2); padding:1px 6px; border-radius:5px; }
+    .note { display:flex; gap:10px; background:var(--card); border:1px solid var(--line); border-radius:12px; padding:14px 16px; }
+    .note b { color:var(--fg); }
+    .foot { margin-top:56px; color:var(--faint); font-size:13px; }
+    a { color: var(--accent); }
+    .lead { color: var(--fg); font-weight:600; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <span class="tag">🔥 Byte-ling</span>
+    <h1>Add Byte-ling to your app</h1>
+    <p class="sub">A little coding companion that lives in the corner of your app. Your visitors sign in with their own account and their own Anthropic key — you don't manage any keys or servers. Byte-ling is already docked in the corner of <em>this</em> page (that's the one-liner below at work).</p>
+
+    <h2>The one line</h2>
+    <div class="step">
+      <div class="num">1</div>
+      <div style="flex:1; min-width:0;">
+        <p class="lead" style="margin:2px 0 10px;">Paste this once, anywhere on your page. That's it.</p>
+        <div class="snip" data-copy>
+          <code>&lt;script src="https://byteling-baas-417f0fd8.base44.app/embed.js"&gt;&lt;/script&gt;</code>
+          <button class="copy">Copy</button>
+        </div>
+        <p style="margin-top:10px; font-size:14px;">The companion appears automatically in the bottom-right corner. Nothing else to add.</p>
+      </div>
+    </div>
+
+    <h2>Where does it go?</h2>
+    <div class="card">
+      <p style="margin:0 0 4px;"><b style="color:var(--fg)">Any website / plain HTML</b> — paste it just before the closing <code style="font-size:12.5px">&lt;/body&gt;</code> tag.</p>
+      <p style="margin:12px 0 4px;"><b style="color:var(--fg)">A Base44 app</b> — drop it into your page's HTML (or a custom-code / embed block). It loads cross-origin, so it just works.</p>
+      <p style="margin:12px 0 0;"><b style="color:var(--fg)">React / Vue / Next</b> — add the same <code style="font-size:12.5px">&lt;script&gt;</code> to your root <code style="font-size:12.5px">index.html</code>, or load it once when the app mounts.</p>
+    </div>
+
+    <h2>Make it yours (optional)</h2>
+    <p style="margin-top:0;">Tint the flame or resize it right on the script tag:</p>
+    <div class="snip" data-copy>
+      <code>&lt;script src="https://byteling-baas-417f0fd8.base44.app/embed.js"
+        data-hue="210" data-size="150"&gt;&lt;/script&gt;</code>
+      <button class="copy">Copy</button>
+    </div>
+    <table>
+      <tr><th>Option</th><th>What it does</th></tr>
+      <tr><td><code>data-hue</code></td><td>Flame color, 0–360 (e.g. <code>210</code> = blue, <code>150</code> = green). Default is warm amber.</td></tr>
+      <tr><td><code>data-size</code></td><td>Lantern size in pixels (48–240). Default <code>72</code>. Users can also drag &amp; resize it themselves via the ⚙ menu.</td></tr>
+    </table>
+    <p style="font-size:13.5px; color:var(--faint); margin-top:14px;">Want to place it in a specific spot instead of auto-corner? Add the tag yourself: <code style="font-size:12px">&lt;byteling-companion hue="210"&gt;&lt;/byteling-companion&gt;</code> — the script will use that one instead of adding its own.</p>
+
+    <h2>What your visitors need</h2>
+    <div class="note">
+      <span>🔑</span>
+      <div>
+        <p style="margin:0; color:var(--fg);">Each person clicks <b>Sign in</b> in the panel, then adds their <b>own Anthropic API key</b> once. From then on Byte-ling reads their GitHub repos, answers questions about their code, and opens pull requests — all billed to <b>their</b> account, not yours. You never touch keys or run a backend.</p>
+      </div>
+    </div>
+
+    <p class="foot">Byte-ling · <a href="https://byteling-baas-417f0fd8.base44.app" target="_blank" rel="noreferrer">open the full app ↗</a></p>
+  </div>
+
+  <script>
+    document.querySelectorAll('[data-copy]').forEach((box) => {
+      const btn = box.querySelector('.copy');
+      const code = box.querySelector('code').textContent;
+      btn.addEventListener('click', async () => {
+        try { await navigator.clipboard.writeText(code); btn.textContent = 'Copied'; btn.classList.add('ok'); }
+        catch { btn.textContent = 'Copy failed'; }
+        setTimeout(() => { btn.textContent = 'Copy'; btn.classList.remove('ok'); }, 1600);
+      });
+    });
+  </script>
+
+  <!-- The one-liner itself, live on this page. -->
+  <script src="/embed.js"></script>
+</body>
+</html>
