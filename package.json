@@ -8,6 +8,7 @@
     "build": "vite build",
     "build:embed": "vite build --config vite.embed.config.js",
     "build:all": "vite build && vite build --config vite.embed.config.js",
+    "build:extension": "vite build --config vite.embed.config.js && node -e \"require('fs').copyFileSync('dist/embed.js','extension/embed.js')\"",
     "lint": "eslint . --quiet",
     "lint:fix": "eslint . --fix",
     "typecheck": "tsc -p ./jsconfig.json",
