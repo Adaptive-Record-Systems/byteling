@@ -31,6 +31,31 @@ function readToken() {
   try { return localStorage.getItem(TOKEN_KEY) || null; } catch { return null; }
 }
 
+// Cross-origin call to a Byteling backend function (CORS is open). Throws an
+// Error carrying { status, code } on non-2xx so callers can branch on auth /
+// no-key / no-connection.
+async function callFn(name, body, token) {
+  const res = await fetch(`${BYTELING_BASE}/functions/${name}`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${token}`,
+      'X-App-Id': BYTELING_APP_ID
+    },
+    body: JSON.stringify(body || {})
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    const err = new Error(data.error || `Request failed (${res.status})`);
+    err.status = res.status;
+    err.code = data.code;
+    throw err;
+  }
+  return data;
+}
+
+const MAX_TREE_LINES = 1000;
+
 function EmbedApp({ hue, dockSize }) {
   const [open, setOpen] = useState(false);
   const [messages, setMessages] = useState([]);
@@ -38,6 +63,10 @@ function EmbedApp({ hue, dockSize }) {
   const [sending, setSending] = useState(false);
   const [pulse, setPulse] = useState(null);
   const [token, setToken] = useState(readToken);
+  const [repos, setRepos] = useState(null); // null = not loaded yet
+  const [repo, setRepo] = useState(null);    // { full_name, tree_text }
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const [repoError, setRepoError] = useState(null);
   const idRef = useRef(0);
   const scrollRef = useRef(null);
 
@@ -72,44 +101,78 @@ function EmbedApp({ hue, dockSize }) {
     if (!open) setOpen(true);
   };
 
+  // Lazy-load the user's repos the first time the panel opens while signed in.
+  useEffect(() => {
+    if (!open || !token || repos !== null) return;
+    setRepoError(null);
+    callFn('github-repo', { action: 'list' }, token)
+      .then((d) => setRepos(d.repos || []))
+      .catch((e) => {
+        setRepos([]);
+        setRepoError(e.status === 409 ? 'Connect GitHub in Byte-ling to open a repo.' : (e.message || 'Could not load repos.'));
+      });
+  }, [open, token, repos]);
+
+  const openRepo = async (fullName) => {
+    setPickerOpen(false);
+    setRepoError(null);
+    try {
+      const d = await callFn('github-repo', { action: 'tree', repo_full_name: fullName }, token);
+      const paths = (d.tree || []).filter((e) => e.type === 'blob').map((e) => e.path).slice(0, MAX_TREE_LINES);
+      setRepo({ full_name: fullName, tree_text: paths.join('\n') });
+      fire('drift');
+    } catch (e) {
+      setRepoError(e.message || 'Could not open that repo.');
+    }
+  };
+
+  const patch = (idx, p) => setMessages((m) => m.map((x, i) => (i === idx ? { ...x, ...p } : x)));
+
+  const confirmPr = async (idx, proposal) => {
+    if (!repo) return;
+    patch(idx, { prPending: true });
+    try {
+      const d = await callFn('github-pr', { repo_full_name: repo.full_name, ...proposal }, token);
+      patch(idx, { prPending: false, prResult: d, proposal: null });
+      fire('spark');
+    } catch (e) {
+      patch(idx, { prPending: false, prError: e.message || 'Could not open the PR.' });
+    }
+  };
+
   const submit = async () => {
     const text = input.trim();
     if (!text || sending) return;
     if (!token) { signIn(); return; }
 
+    // The embed keeps its own thread and replays it as history (no session_id).
+    const history = messages.filter((m) => !m.error).map((m) => ({ role: m.role, text: m.text }));
     setInput('');
     setMessages((m) => [...m, { role: 'user', text }]);
     setSending(true);
     fire('notice');
     try {
-      // Cross-origin call to the Byteling backend (CORS is open); the token
-      // authenticates the user, their own Anthropic key does the work.
-      const res = await fetch(`${BYTELING_BASE}/functions/claude-chat`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`,
-          'X-App-Id': BYTELING_APP_ID
-        },
-        body: JSON.stringify({ message: text })
-      });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) {
-        if (res.status === 401) {
-          clearToken();
-          throw new Error('Your session expired — sign in again.');
-        }
-        if (data.code === 'no_provider_key' || data.code === 'invalid_provider_key') {
-          throw new Error('Add your Anthropic key in Byte-ling first, then come back.');
-        }
-        throw new Error(data.error || 'Something went wrong.');
-      }
+      const data = await callFn('claude-chat', {
+        message: text,
+        history,
+        repo_full_name: repo?.full_name,
+        context: repo ? { tree_text: repo.tree_text } : undefined
+      }, token);
       setSending(false);
       fire('spark');
-      setMessages((m) => [...m, { role: 'assistant', text: data.reply || '…' }]);
+      if (data.reply || data.pr_proposal) {
+        setMessages((m) => [...m, { role: 'assistant', text: data.reply || '', proposal: data.pr_proposal || null }]);
+      }
+      if (data.open_repo) openRepo(data.open_repo);
     } catch (e) {
       setSending(false);
-      setMessages((m) => [...m, { role: 'assistant', text: e.message || 'Error', error: true }]);
+      if (e.status === 401) clearToken();
+      const msg = e.status === 401
+        ? 'Your session expired — sign in again.'
+        : (e.code === 'no_provider_key' || e.code === 'invalid_provider_key')
+          ? 'Add your Anthropic key in Byte-ling first, then come back.'
+          : (e.message || 'Something went wrong.');
+      setMessages((m) => [...m, { role: 'assistant', text: msg, error: true }]);
     }
   };
 
@@ -119,9 +182,33 @@ function EmbedApp({ hue, dockSize }) {
         <div className="btlc-head">
           <span className="btlc-head-title">
             <FlameMark hue={hue ?? 42} /> Byte-ling
+            {token && (
+              <button className="btlc-repo" onClick={() => setPickerOpen((o) => !o)} title="Pick a repository">
+                <span className="btlc-repo-ico">⎇</span>
+                {repo ? repo.full_name.split('/').pop() : 'pick a repo'}
+              </button>
+            )}
           </span>
           <button className="btlc-x" onClick={() => setOpen(false)} aria-label="Close">×</button>
         </div>
+
+        {pickerOpen && token && (
+          <div className="btlc-picker">
+            {repos === null ? (
+              <div className="btlc-picker-note">loading…</div>
+            ) : repoError ? (
+              <div className="btlc-picker-note">{repoError}</div>
+            ) : repos.length === 0 ? (
+              <div className="btlc-picker-note">No repositories found.</div>
+            ) : (
+              repos.map((r) => (
+                <button key={r.full_name} className="btlc-picker-item" onClick={() => openRepo(r.full_name)}>
+                  {r.full_name}
+                </button>
+              ))
+            )}
+          </div>
+        )}
 
         <div className="btlc-body" ref={scrollRef}>
           {messages.length === 0 && (
@@ -140,7 +227,29 @@ function EmbedApp({ hue, dockSize }) {
             ) : (
               <div key={i} className="btlc-row">
                 <span className="btlc-ava"><FlameMark hue={hue ?? 42} /></span>
-                <div className={`btlc-bubble btlc-bot ${m.error ? 'btlc-err' : ''}`}>{m.text}</div>
+                <div className="btlc-botcol">
+                  {m.text && <div className={`btlc-bubble btlc-bot ${m.error ? 'btlc-err' : ''}`}>{m.text}</div>}
+                  {m.prResult && (
+                    <a className="btlc-prlink" href={m.prResult.pr_url} target="_blank" rel="noreferrer">
+                      Opened PR #{m.prResult.number} ↗
+                    </a>
+                  )}
+                  {m.proposal && !m.prResult && (
+                    <div className="btlc-prcard">
+                      <div className="btlc-prtitle">{m.proposal.title}</div>
+                      <div className="btlc-prfiles">
+                        {m.proposal.changes.length} file{m.proposal.changes.length > 1 ? 's' : ''}: {m.proposal.changes.map((c) => c.path).join(', ')}
+                      </div>
+                      {m.prError && <div className="btlc-prerr">{m.prError}</div>}
+                      <div className="btlc-prbtns">
+                        <button className="btlc-prbtn" disabled={m.prPending} onClick={() => confirmPr(i, m.proposal)}>
+                          {m.prPending ? 'Opening…' : 'Open PR'}
+                        </button>
+                        <button className="btlc-prghost" onClick={() => patch(i, { proposal: null })}>Dismiss</button>
+                      </div>
+                    </div>
+                  )}
+                </div>
               </div>
             )
           )}
@@ -158,7 +267,7 @@ function EmbedApp({ hue, dockSize }) {
               <textarea
                 className="btlc-input"
                 rows={1}
-                placeholder="Ask Byte-ling…"
+                placeholder={repo ? `Ask about ${repo.full_name.split('/').pop()}…` : 'Ask Byte-ling…'}
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
                 onKeyDown={(e) => {
@@ -216,12 +325,49 @@ function EmbedStyles() {
         transition: opacity ${OPEN_MS}ms ease, transform ${OPEN_MS}ms cubic-bezier(.2,.8,.2,1);
       }
       .btlc-panel.btlc-open { opacity: 1; transform: translateY(0) scale(1); pointer-events: auto; }
+      .btlc-panel { position: relative; }
 
       .btlc-head {
         display: flex; align-items: center; justify-content: space-between;
         padding: 12px 14px; border-bottom: 1px solid #24242b;
       }
-      .btlc-head-title { display: inline-flex; align-items: center; gap: 8px; font-weight: 700; font-size: 15px; }
+      .btlc-head-title { display: inline-flex; align-items: center; gap: 8px; font-weight: 700; font-size: 15px; min-width: 0; }
+
+      .btlc-repo {
+        display: inline-flex; align-items: center; gap: 4px; max-width: 130px;
+        border: 0; cursor: pointer; font: inherit; font-size: 11.5px; font-weight: 600;
+        background: rgba(255,255,255,.06); color: #b9b9c2;
+        padding: 3px 8px; border-radius: 7px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+      }
+      .btlc-repo:hover { background: rgba(255,255,255,.11); color: #e9e9ee; }
+      .btlc-repo-ico { opacity: .7; }
+
+      .btlc-picker {
+        position: absolute; top: 47px; left: 10px; right: 10px; z-index: 5;
+        max-height: 240px; overflow-y: auto;
+        background: #1d1d23; border: 1px solid #33333c; border-radius: 10px;
+        box-shadow: 0 12px 30px rgba(0,0,0,.5); padding: 4px;
+      }
+      .btlc-picker-note { padding: 10px 12px; font-size: 12.5px; color: #a7a7b0; }
+      .btlc-picker-item {
+        display: block; width: 100%; text-align: left; border: 0; cursor: pointer;
+        background: transparent; color: #d7d7de; font: inherit; font-size: 12.5px;
+        padding: 7px 9px; border-radius: 7px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+      }
+      .btlc-picker-item:hover { background: rgba(255,255,255,.07); }
+
+      .btlc-botcol { display: flex; flex-direction: column; gap: 6px; max-width: 82%; }
+      .btlc-prcard { border: 1px solid #3a3a44; background: rgba(255,255,255,.03); border-radius: 12px; padding: 10px; }
+      .btlc-prtitle { font-size: 12.5px; font-weight: 600; color: #e9e9ee; }
+      .btlc-prfiles { font-size: 11px; color: #9a9aa4; margin-top: 2px; word-break: break-all; }
+      .btlc-prerr { font-size: 11px; color: #ffb4b4; margin-top: 6px; }
+      .btlc-prbtns { display: flex; gap: 6px; margin-top: 8px; }
+      .btlc-prbtn { border: 0; cursor: pointer; font: inherit; font-size: 12px; font-weight: 700; background: #e9e9ee; color: #17171b; padding: 5px 12px; border-radius: 8px; }
+      .btlc-prbtn:disabled { opacity: .5; cursor: default; }
+      .btlc-prghost { border: 0; cursor: pointer; font: inherit; font-size: 12px; background: transparent; color: #9a9aa4; padding: 5px 8px; border-radius: 8px; }
+      .btlc-prghost:hover { color: #e9e9ee; }
+      .btlc-prlink { display: inline-block; font-size: 12.5px; color: #8fb7ff; text-decoration: none; border: 1px solid #33333c; border-radius: 8px; padding: 6px 10px; }
+      .btlc-prlink:hover { background: rgba(255,255,255,.05); }
       .btlc-x { border: 0; background: transparent; color: #8a8a94; font-size: 20px; cursor: pointer; line-height: 1; padding: 0 4px; }
       .btlc-x:hover { color: #e9e9ee; }
 

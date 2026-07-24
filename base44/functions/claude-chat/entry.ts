@@ -224,6 +224,16 @@ Deno.serve(async (req) => {
           anthropicMessages.push({ role: m.role, content: m.text });
         }
       }
+    } else if (Array.isArray(body.history)) {
+      // Session-less clients (the embed) keep the thread themselves and replay it
+      // as prior turns. Capped like the persisted path so it can't grow unbounded.
+      for (const m of body.history.slice(-HISTORY_LIMIT)) {
+        const role = (m as { role?: unknown })?.role;
+        const text = (m as { text?: unknown })?.text;
+        if ((role === 'user' || role === 'assistant') && typeof text === 'string' && text) {
+          anthropicMessages.push({ role, content: text });
+        }
+      }
     }
 
     const contextBlock = buildContextBlock(body.context, repoFullName);
