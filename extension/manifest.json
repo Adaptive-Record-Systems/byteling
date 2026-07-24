@@ -1,0 +1,14 @@
+{
+  "manifest_version": 3,
+  "name": "Byte-ling",
+  "version": "0.1.0",
+  "description": "Summon Byte-ling — a coding companion — on any page. Reads your GitHub repos, answers questions about your code, and opens PRs, on your own Anthropic key.",
+  "action": {
+    "default_title": "Summon Byte-ling",
+    "default_icon": { "16": "icons/icon16.png", "48": "icons/icon48.png", "128": "icons/icon128.png" }
+  },
+  "icons": { "16": "icons/icon16.png", "48": "icons/icon48.png", "128": "icons/icon128.png" },
+  "background": { "service_worker": "background.js" },
+  "permissions": ["scripting", "activeTab"],
+  "host_permissions": ["https://byteling-baas-417f0fd8.base44.app/*"]
+}
