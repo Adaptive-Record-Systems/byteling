@@ -1,0 +1,84 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Byte-ling — Privacy Policy</title>
+  <style>
+    :root {
+      --bg:#0e0e10; --card:#161619; --card2:#1c1c20; --line:#2a2a31;
+      --fg:#ececed; --muted:#a2a2ac; --faint:#6f6f79; --accent:#c9a24b;
+      color-scheme: dark light;
+    }
+    @media (prefers-color-scheme: light) {
+      :root { --bg:#f7f7f9; --card:#fff; --card2:#f2f2f5; --line:#e6e6ea; --fg:#17171b; --muted:#5c5c66; --faint:#9a9aa4; --accent:#b8860b; }
+    }
+    * { box-sizing: border-box; }
+    body { margin:0; background:var(--bg); color:var(--fg); font-family: ui-sans-serif, system-ui, -apple-system, sans-serif; line-height:1.65; }
+    .wrap { max-width: 720px; margin: 0 auto; padding: 64px 20px 120px; }
+    .tag { display:inline-block; font-size:11px; font-weight:700; color:var(--accent); background:color-mix(in srgb, var(--accent) 16%, transparent); padding:2px 8px; border-radius:999px; margin-bottom:12px; }
+    h1 { font-size: 28px; font-weight: 800; margin: 0 0 4px; letter-spacing:-.01em; }
+    .date { color: var(--faint); font-size: 13px; margin: 0 0 32px; }
+    h2 { font-size: 14px; font-weight: 700; text-transform: uppercase; letter-spacing:.06em; color: var(--faint); margin: 36px 0 10px; }
+    p, li { color: var(--muted); }
+    p { margin: 0 0 12px; }
+    ul { margin: 0 0 12px; padding-left: 20px; }
+    li { margin: 6px 0; }
+    b { color: var(--fg); }
+    code { font-family: ui-monospace, monospace; font-size: 12.5px; background: var(--card2); padding: 1px 6px; border-radius: 5px; }
+    a { color: var(--accent); }
+    .card { background:var(--card); border:1px solid var(--line); border-radius:14px; padding:16px 18px; margin: 12px 0; }
+    .foot { margin-top:48px; color:var(--faint); font-size:13px; border-top:1px solid var(--line); padding-top:20px; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <span class="tag">🔥 Byte-ling</span>
+    <h1>Privacy Policy</h1>
+    <p class="date">Last updated: July 24, 2026</p>
+
+    <p>Byte-ling is a coding companion you can use in the web app, as an embedded widget on your own site, or as a Chrome extension. This policy explains what data Byte-ling handles and why. It applies to all three. The guiding principle: <b>Byte-ling works on your own accounts and your own API key — it is a tool you point at your code, not a service that collects your data to resell.</b></p>
+
+    <h2>What we handle</h2>
+    <ul>
+      <li><b>Your account</b> — an email address, used to sign you in and to scope your data to you.</li>
+      <li><b>Your GitHub connection</b> — when you connect GitHub, we store an access token (granted with the <code>repo</code> scope you approve) so Byte-ling can read the repositories you ask about and open pull requests when you confirm them. We never write to your default branch — pull requests only ever land on a new branch.</li>
+      <li><b>Your Anthropic API key (BYOK)</b> — you provide your own key. It is validated, then stored server-side and <b>never shown back to any browser</b>. All AI usage bills to <b>your</b> Anthropic account, not ours.</li>
+      <li><b>Your conversations</b> — the messages you send and the repository context you choose to include, so Byte-ling can answer and so your thread survives a reload.</li>
+    </ul>
+
+    <h2>How your code and messages are used</h2>
+    <p>When you ask a question, the relevant repository content and your messages are sent to <b>Anthropic's API under your own key</b> to generate a response, and to the <b>GitHub API under your own token</b> to read files or open a pull request you confirmed. These are the two external services Byte-ling relies on. We do not sell your data, show ads, or use your code or conversations to train any model.</p>
+
+    <h2>The Chrome extension specifically</h2>
+    <div class="card">
+      <p style="margin:0 0 10px;">The extension uses the narrowest permissions that let it work:</p>
+      <ul style="margin:0;">
+        <li><code>activeTab</code> + <code>scripting</code> — only when you <b>click the toolbar icon</b>, it injects the Byte-ling companion into the page you're looking at. It does not run on pages you didn't summon it on, and it does not read your browsing history or the content of pages you visit.</li>
+        <li><code>host_permissions</code> for the Byte-ling backend — so the companion can talk to the same backend as the web app to sign you in and answer questions.</li>
+      </ul>
+    </div>
+
+    <h2>Where it's stored</h2>
+    <p>Data is stored in Byte-ling's backend (hosted on Base44) and scoped to your account. Sensitive values — your GitHub token and your Anthropic API key — are locked so that only server-side functions can use them; they cannot be read back by any browser, including your own.</p>
+
+    <h2>Your control</h2>
+    <ul>
+      <li><b>Disconnect GitHub</b> at any time from the setup screen — this removes the stored token.</li>
+      <li><b>Replace or remove your API key</b> from the setup screen.</li>
+      <li><b>Request deletion</b> of your account data by emailing us (below).</li>
+    </ul>
+
+    <h2>Children</h2>
+    <p>Byte-ling is a developer tool and is not directed to children under 13.</p>
+
+    <h2>Changes</h2>
+    <p>If this policy changes, we'll update the date at the top of this page.</p>
+
+    <h2>Contact</h2>
+    <p>Questions or deletion requests: <a href="mailto:cfair1911@gmail.com">cfair1911@gmail.com</a>.</p>
+
+    <p class="foot">Byte-ling · <a href="https://byteling-baas-417f0fd8.base44.app" target="_blank" rel="noreferrer">open the app ↗</a> · <a href="/install.html">install guide</a></p>
+  </div>
+</body>
+</html>
