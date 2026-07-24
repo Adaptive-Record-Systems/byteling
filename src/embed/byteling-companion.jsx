@@ -35,8 +35,25 @@ const SIZE_KEY = 'byteling_embed_size';  // dock px width once the user resizes 
 const DOCK_MIN = 48;
 const DOCK_MAX = 240;
 
+// Running as the Chrome/Edge extension (content-script isolated world) vs. the
+// web embed on a first-party page. In the extension, `localStorage` belongs to
+// whatever host page you summoned Byte-ling on — an untrusted origin — so we must
+// NOT persist the access token there (the host page could read it and
+// impersonate you). In the extension the token lives in isolated-world memory
+// only; on the web embed (your own site) localStorage persistence is fine.
+const IS_EXTENSION = typeof chrome !== 'undefined' && !!chrome?.runtime?.id;
+
 function readToken() {
+  if (IS_EXTENSION) return null; // never rehydrate a token from host-page storage
   try { return localStorage.getItem(TOKEN_KEY) || null; } catch { return null; }
+}
+function persistToken(token) {
+  if (IS_EXTENSION) return; // keep it in memory only — never in the host page
+  try { localStorage.setItem(TOKEN_KEY, token); } catch { /* ignore */ }
+}
+function forgetToken() {
+  if (IS_EXTENSION) return;
+  try { localStorage.removeItem(TOKEN_KEY); } catch { /* ignore */ }
 }
 function readPos() {
   try {
@@ -108,7 +125,7 @@ function EmbedApp({ hue, dockSize: initialDockSize }) {
       if (e.origin !== BYTELING_BASE) return;
       if (e.data && e.data.type === 'byteling-auth' && e.data.token) {
         setToken(e.data.token);
-        try { localStorage.setItem(TOKEN_KEY, e.data.token); } catch { /* ignore */ }
+        persistToken(e.data.token);
       }
     };
     window.addEventListener('message', onMsg);
@@ -117,7 +134,7 @@ function EmbedApp({ hue, dockSize: initialDockSize }) {
 
   const clearToken = () => {
     setToken(null);
-    try { localStorage.removeItem(TOKEN_KEY); } catch { /* ignore */ }
+    forgetToken();
   };
 
   // Sign out: drop the token and wipe the session-local state so the next
