@@ -567,18 +567,23 @@ function EmbedStyles() {
   );
 }
 
+// Attach a shadow root to `host`, mount React inside it, and return the root.
+// Shared by the custom element and the registry-free path below.
+function renderCompanionInto(host, { hue = null, dockSize = 72 } = {}) {
+  const shadow = host.attachShadow({ mode: 'open' });
+  const mount = document.createElement('div');
+  shadow.appendChild(mount);
+  const root = createRoot(mount);
+  root.render(<EmbedApp hue={hue} dockSize={dockSize} />);
+  return root;
+}
+
 class BytelingCompanion extends HTMLElement {
   connectedCallback() {
-    const shadow = this.attachShadow({ mode: 'open' });
-    const mount = document.createElement('div');
-    shadow.appendChild(mount);
-
     const hueAttr = this.getAttribute('hue');
     const hue = hueAttr != null && hueAttr !== '' ? Number(hueAttr) : null;
     const dockSize = Number(this.getAttribute('size')) || 72;
-
-    this._root = createRoot(mount);
-    this._root.render(<EmbedApp hue={hue} dockSize={dockSize} />);
+    this._root = renderCompanionInto(this, { hue, dockSize });
   }
 
   disconnectedCallback() {
@@ -587,20 +592,40 @@ class BytelingCompanion extends HTMLElement {
   }
 }
 
-if (typeof customElements !== 'undefined' && !customElements.get('byteling-companion')) {
-  customElements.define('byteling-companion', BytelingCompanion);
+// customElements is a real registry on normal pages, but is `null` in an
+// extension content-script isolated world (Chromium disables Custom Elements
+// there). Guard for null so we don't throw, and fall back to a registry-free
+// mount below when it's unavailable.
+const CE = typeof customElements !== 'undefined' && customElements ? customElements : null;
+if (CE && !CE.get('byteling-companion')) {
+  CE.define('byteling-companion', BytelingCompanion);
 }
 
 // One-line install: if the page just includes the script (no <byteling-companion>
-// tag of its own), auto-add one so the companion appears. Config can ride on the
+// tag of its own), auto-add the companion so it appears. Config can ride on the
 // script tag as data-hue / data-size. Devs who place the tag themselves opt out.
+const ROOT_ATTR = 'data-byteling-root';
 function autoMount() {
-  if (typeof document === 'undefined' || document.querySelector('byteling-companion')) return;
-  const el = document.createElement('byteling-companion');
+  if (typeof document === 'undefined') return;
+  // Already present (either the custom-element tag or our registry-free host).
+  if (document.querySelector('byteling-companion') || document.querySelector(`[${ROOT_ATTR}]`)) return;
+
   const ds = (SELF_SCRIPT && SELF_SCRIPT.dataset) || {};
-  if (ds.hue) el.setAttribute('hue', ds.hue);
-  if (ds.size) el.setAttribute('size', ds.size);
-  document.body.appendChild(el);
+  if (CE) {
+    const el = document.createElement('byteling-companion');
+    if (ds.hue) el.setAttribute('hue', ds.hue);
+    if (ds.size) el.setAttribute('size', ds.size);
+    document.body.appendChild(el);
+  } else {
+    // No custom-element registry (extension isolated world): mount straight
+    // onto a plain host div with its own shadow root. Same UI, no registry.
+    const host = document.createElement('div');
+    host.setAttribute(ROOT_ATTR, '');
+    document.body.appendChild(host);
+    const hue = ds.hue != null && ds.hue !== '' ? Number(ds.hue) : null;
+    const dockSize = Number(ds.size) || 72;
+    renderCompanionInto(host, { hue, dockSize });
+  }
 }
 if (typeof document !== 'undefined') {
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', autoMount);
