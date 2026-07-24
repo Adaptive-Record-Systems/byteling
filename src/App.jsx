@@ -8,6 +8,7 @@ import UserNotRegisteredError from '@/components/UserNotRegisteredError';
 import ScrollToTop from './components/ScrollToTop';
 import ProtectedRoute from '@/components/ProtectedRoute';
 import Home from '@/pages/Home';
+import EmbedAuth from '@/pages/EmbedAuth';
 import Login from '@/pages/Login';
 import Register from '@/pages/Register';
 import ForgotPassword from '@/pages/ForgotPassword';
@@ -43,6 +44,8 @@ const AuthenticatedApp = () => {
       {/* Public auth routes — must stay outside ProtectedRoute so a
           signed-out user can actually reach them. */}
       <Route path="/login" element={<Login />} />
+      {/* Popup target for the embed's sign-in — handles its own login. */}
+      <Route path="/embed-auth" element={<EmbedAuth />} />
       <Route path="/register" element={<Register />} />
       <Route path="/forgot-password" element={<ForgotPassword />} />
       <Route path="/reset-password" element={<ResetPassword />} />
