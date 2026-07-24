@@ -26,10 +26,25 @@ const OPEN_MS = 260;
 const BYTELING_BASE = 'https://byteling-baas-417f0fd8.base44.app';
 const BYTELING_APP_ID = '6a61038cc4bec6bf417f0fd8';
 const TOKEN_KEY = 'byteling_embed_token';
+const POS_KEY = 'byteling_embed_pos';    // { left, top } once the user moves it
+const SIZE_KEY = 'byteling_embed_size';  // dock px width once the user resizes it
+const DOCK_MIN = 48;
+const DOCK_MAX = 240;
 
 function readToken() {
   try { return localStorage.getItem(TOKEN_KEY) || null; } catch { return null; }
 }
+function readPos() {
+  try {
+    const p = JSON.parse(localStorage.getItem(POS_KEY));
+    return p && typeof p.left === 'number' && typeof p.top === 'number' ? p : null;
+  } catch { return null; }
+}
+function readSize(fallback) {
+  const n = Number((() => { try { return localStorage.getItem(SIZE_KEY); } catch { return null; } })());
+  return n >= DOCK_MIN && n <= DOCK_MAX ? n : fallback;
+}
+const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
 
 // Cross-origin call to a Byteling backend function (CORS is open). Throws an
 // Error carrying { status, code } on non-2xx so callers can branch on auth /
@@ -56,8 +71,13 @@ async function callFn(name, body, token) {
 
 const MAX_TREE_LINES = 1000;
 
-function EmbedApp({ hue, dockSize }) {
+function EmbedApp({ hue, dockSize: initialDockSize }) {
   const [open, setOpen] = useState(false);
+  const [dockSize, setDockSize] = useState(() => readSize(initialDockSize));
+  const [pos, setPos] = useState(readPos);       // null = default bottom-right
+  const [unlocked, setUnlocked] = useState(false);
+  const rootRef = useRef(null);
+  const dragRef = useRef({ moved: false });
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState('');
   const [sending, setSending] = useState(false);
@@ -66,6 +86,7 @@ function EmbedApp({ hue, dockSize }) {
   const [repos, setRepos] = useState(null); // null = not loaded yet
   const [repo, setRepo] = useState(null);    // { full_name, tree_text }
   const [pickerOpen, setPickerOpen] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
   const [repoError, setRepoError] = useState(null);
   const idRef = useRef(0);
   const scrollRef = useRef(null);
@@ -93,6 +114,55 @@ function EmbedApp({ hue, dockSize }) {
   const clearToken = () => {
     setToken(null);
     try { localStorage.removeItem(TOKEN_KEY); } catch { /* ignore */ }
+  };
+
+  // Sign out: drop the token and wipe the session-local state so the next
+  // person on this browser doesn't inherit the thread or repo.
+  const signOut = () => {
+    clearToken();
+    setMessages([]);
+    setRepo(null);
+    setRepos(null);
+    setPickerOpen(false);
+    setMenuOpen(false);
+    setRepoError(null);
+  };
+
+  // Enter "move & resize" mode: close the panel and let the bare lantern be
+  // dragged / resized, persisting position + size.
+  const enterUnlock = () => { setUnlocked(true); setOpen(false); setMenuOpen(false); };
+  const exitUnlock = () => setUnlocked(false);
+
+  const resize = (next) => {
+    const n = clamp(Math.round(next), DOCK_MIN, DOCK_MAX);
+    setDockSize(n);
+    try { localStorage.setItem(SIZE_KEY, String(n)); } catch { /* ignore */ }
+  };
+
+  // Drag the whole dock (lantern + flame move as one) while unlocked.
+  const onDockPointerDown = (e) => {
+    if (!unlocked) return;
+    e.preventDefault();
+    const root = rootRef.current;
+    const rect = root.getBoundingClientRect();
+    const startX = e.clientX, startY = e.clientY;
+    dragRef.current = { moved: false };
+    const move = (ev) => {
+      dragRef.current.moved = true;
+      const left = clamp(rect.left + (ev.clientX - startX), 4, window.innerWidth - rect.width - 4);
+      const top = clamp(rect.top + (ev.clientY - startY), 4, window.innerHeight - rect.height - 4);
+      setPos({ left, top });
+    };
+    const up = () => {
+      window.removeEventListener('pointermove', move);
+      window.removeEventListener('pointerup', up);
+      if (dragRef.current.moved) {
+        const r = rootRef.current.getBoundingClientRect();
+        try { localStorage.setItem(POS_KEY, JSON.stringify({ left: r.left, top: r.top })); } catch { /* ignore */ }
+      }
+    };
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', up);
   };
 
   const signIn = () => {
@@ -176,8 +246,10 @@ function EmbedApp({ hue, dockSize }) {
     }
   };
 
+  const rootStyle = pos ? { left: `${pos.left}px`, top: `${pos.top}px`, right: 'auto', bottom: 'auto' } : undefined;
+
   return (
-    <div className="btlc-root">
+    <div ref={rootRef} className={`btlc-root ${unlocked ? 'btlc-unlocked' : ''}`} style={rootStyle}>
       <div className={`btlc-panel ${open ? 'btlc-open' : ''}`} role="dialog" aria-label="Byte-ling">
         <div className="btlc-head">
           <span className="btlc-head-title">
@@ -189,8 +261,23 @@ function EmbedApp({ hue, dockSize }) {
               </button>
             )}
           </span>
-          <button className="btlc-x" onClick={() => setOpen(false)} aria-label="Close">×</button>
+          <span className="btlc-head-actions">
+            {token && (
+              <button className="btlc-gear" onClick={() => setMenuOpen((o) => !o)} title="Settings" aria-label="Settings">⚙</button>
+            )}
+            <button className="btlc-x" onClick={() => setOpen(false)} aria-label="Close">×</button>
+          </span>
         </div>
+
+        {menuOpen && token && (
+          <div className="btlc-menu">
+            <button className="btlc-menu-item" onClick={enterUnlock}>Move &amp; resize</button>
+            <a className="btlc-menu-item" href={BYTELING_BASE} target="_blank" rel="noreferrer" onClick={() => setMenuOpen(false)}>
+              Open Byte-ling ↗
+            </a>
+            <button className="btlc-menu-item btlc-menu-danger" onClick={signOut}>Sign out</button>
+          </div>
+        )}
 
         {pickerOpen && token && (
           <div className="btlc-picker">
@@ -282,12 +369,28 @@ function EmbedApp({ hue, dockSize }) {
         </div>
       </div>
 
+      {unlocked && (
+        <div className="btlc-resizebar">
+          <span className="btlc-resize-label">Size</span>
+          <input
+            className="btlc-resize-range"
+            type="range"
+            min={DOCK_MIN}
+            max={DOCK_MAX}
+            value={dockSize}
+            onChange={(e) => resize(Number(e.target.value))}
+          />
+          <button className="btlc-resize-done" onClick={exitUnlock}>Done</button>
+        </div>
+      )}
+
       <button
         className="btlc-dock"
-        style={{ width: dockSize }}
-        onClick={() => setOpen((o) => !o)}
-        aria-label={open ? 'Close Byte-ling' : 'Open Byte-ling'}
-        title="Byte-ling"
+        style={{ width: dockSize, cursor: unlocked ? 'grab' : 'pointer', touchAction: unlocked ? 'none' : 'auto' }}
+        onPointerDown={onDockPointerDown}
+        onClick={() => { if (!unlocked) setOpen((o) => !o); }}
+        aria-label={unlocked ? 'Drag to move Byte-ling' : (open ? 'Close Byte-ling' : 'Open Byte-ling')}
+        title={unlocked ? 'Drag to move · use the slider to resize' : 'Byte-ling'}
       >
         <Lantern mood={mood} pulse={pulse} hue={hue} size={dockSize} />
       </button>
@@ -412,6 +515,31 @@ function EmbedStyles() {
       }
       .btlc-signin:hover { filter: brightness(.95); }
 
+      .btlc-head-actions { display: inline-flex; align-items: center; gap: 2px; flex: 0 0 auto; }
+      .btlc-gear { border: 0; background: transparent; color: #8a8a94; font-size: 15px; cursor: pointer; line-height: 1; padding: 0 5px; }
+      .btlc-gear:hover { color: #e9e9ee; }
+      .btlc-menu {
+        position: absolute; top: 47px; right: 10px; z-index: 6; min-width: 156px;
+        background: #1d1d23; border: 1px solid #33333c; border-radius: 10px;
+        box-shadow: 0 12px 30px rgba(0,0,0,.5); padding: 4px;
+      }
+      .btlc-menu-item {
+        display: block; width: 100%; text-align: left; border: 0; cursor: pointer; text-decoration: none;
+        background: transparent; color: #d7d7de; font: inherit; font-size: 12.5px; padding: 8px 10px; border-radius: 7px;
+      }
+      .btlc-menu-item:hover { background: rgba(255,255,255,.07); }
+      .btlc-menu-danger { color: #ff9d9d; }
+
+      .btlc-unlocked .btlc-dock { outline: 2px dashed rgba(201,162,75,.75); outline-offset: 5px; border-radius: 14px; }
+      .btlc-resizebar {
+        display: flex; align-items: center; gap: 8px; padding: 7px 11px;
+        background: #1d1d23; color: #d7d7de; border: 1px solid #33333c; border-radius: 12px;
+        box-shadow: 0 10px 26px rgba(0,0,0,.45);
+      }
+      .btlc-resize-label { font-size: 11px; color: #a7a7b0; }
+      .btlc-resize-range { width: 120px; accent-color: hsl(42 92% 60%); }
+      .btlc-resize-done { border: 0; cursor: pointer; font: inherit; font-size: 12px; font-weight: 700; background: #e9e9ee; color: #17171b; padding: 4px 11px; border-radius: 8px; }
+
       @media (prefers-color-scheme: light) {
         .btlc-panel { background: #ffffff; color: #17171b; border-color: #e6e6ea; }
         .btlc-head { border-color: #eee; }
@@ -419,8 +547,14 @@ function EmbedStyles() {
         .btlc-user { background: #17171b; color: #fff; }
         .btlc-input { background: #f6f6f8; color: #17171b; border-color: #e0e0e6; }
         .btlc-composer, .btlc-body .btlc-aside { border-color: #eee; }
-        .btlc-send, .btlc-signin { background: #17171b; color: #fff; }
+        .btlc-send, .btlc-signin, .btlc-resize-done { background: #17171b; color: #fff; }
         .btlc-err { background: rgba(200,40,40,.1); color: #b22; }
+        .btlc-picker, .btlc-menu, .btlc-resizebar { background: #fff; border-color: #e6e6ea; color: #17171b; box-shadow: 0 12px 30px rgba(0,0,0,.15); }
+        .btlc-picker-item, .btlc-menu-item { color: #333; }
+        .btlc-picker-item:hover, .btlc-menu-item:hover { background: #f2f2f5; }
+        .btlc-repo { background: rgba(0,0,0,.05); color: #555; }
+        .btlc-prcard { border-color: #e6e6ea; background: #fafafb; }
+        .btlc-prtitle { color: #17171b; }
       }
       @media (max-width: 420px) {
         .btlc-root { right: 12px; bottom: 12px; }
