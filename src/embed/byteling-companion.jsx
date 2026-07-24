@@ -22,12 +22,22 @@ import { Lantern, FlameMark } from '@/components/Lantern';
 
 const OPEN_MS = 260;
 
+// The embed always talks to the CLI-created Byteling backend, cross-origin.
+const BYTELING_BASE = 'https://byteling-baas-417f0fd8.base44.app';
+const BYTELING_APP_ID = '6a61038cc4bec6bf417f0fd8';
+const TOKEN_KEY = 'byteling_embed_token';
+
+function readToken() {
+  try { return localStorage.getItem(TOKEN_KEY) || null; } catch { return null; }
+}
+
 function EmbedApp({ hue, dockSize }) {
   const [open, setOpen] = useState(false);
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState('');
   const [sending, setSending] = useState(false);
   const [pulse, setPulse] = useState(null);
+  const [token, setToken] = useState(readToken);
   const idRef = useRef(0);
   const scrollRef = useRef(null);
 
@@ -38,27 +48,69 @@ function EmbedApp({ hue, dockSize }) {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' });
   }, [messages, sending]);
 
-  const submit = () => {
+  // Receive the access token from the sign-in popup (posted to our origin).
+  useEffect(() => {
+    const onMsg = (e) => {
+      if (e.origin !== BYTELING_BASE) return;
+      if (e.data && e.data.type === 'byteling-auth' && e.data.token) {
+        setToken(e.data.token);
+        try { localStorage.setItem(TOKEN_KEY, e.data.token); } catch { /* ignore */ }
+      }
+    };
+    window.addEventListener('message', onMsg);
+    return () => window.removeEventListener('message', onMsg);
+  }, []);
+
+  const clearToken = () => {
+    setToken(null);
+    try { localStorage.removeItem(TOKEN_KEY); } catch { /* ignore */ }
+  };
+
+  const signIn = () => {
+    const url = `${BYTELING_BASE}/embed-auth?opener=${encodeURIComponent(window.location.origin)}`;
+    window.open(url, 'byteling-auth', 'width=460,height=680,menubar=no,toolbar=no');
+    if (!open) setOpen(true);
+  };
+
+  const submit = async () => {
     const text = input.trim();
     if (!text || sending) return;
+    if (!token) { signIn(); return; }
+
     setInput('');
     setMessages((m) => [...m, { role: 'user', text }]);
     setSending(true);
     fire('notice');
-    // No token yet — sign-in wiring is the next step. Until then, show the full
-    // interaction loop with an honest preview reply. Swap this timeout for a
-    // real claude-chat call once the popup-auth handoff exists.
-    setTimeout(() => {
+    try {
+      // Cross-origin call to the Byteling backend (CORS is open); the token
+      // authenticates the user, their own Anthropic key does the work.
+      const res = await fetch(`${BYTELING_BASE}/functions/claude-chat`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`,
+          'X-App-Id': BYTELING_APP_ID
+        },
+        body: JSON.stringify({ message: text })
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        if (res.status === 401) {
+          clearToken();
+          throw new Error('Your session expired — sign in again.');
+        }
+        if (data.code === 'no_provider_key' || data.code === 'invalid_provider_key') {
+          throw new Error('Add your Anthropic key in Byte-ling first, then come back.');
+        }
+        throw new Error(data.error || 'Something went wrong.');
+      }
       setSending(false);
       fire('spark');
-      setMessages((m) => [
-        ...m,
-        {
-          role: 'assistant',
-          text: "I'm in preview here — sign in and connect a repo and I'll actually read your code and open PRs. Full chat is coming to the embed next."
-        }
-      ]);
-    }, 900);
+      setMessages((m) => [...m, { role: 'assistant', text: data.reply || '…' }]);
+    } catch (e) {
+      setSending(false);
+      setMessages((m) => [...m, { role: 'assistant', text: e.message || 'Error', error: true }]);
+    }
   };
 
   return (
@@ -74,7 +126,10 @@ function EmbedApp({ hue, dockSize }) {
         <div className="btlc-body" ref={scrollRef}>
           {messages.length === 0 && (
             <div className="btlc-aside">
-              <FlameMark hue={hue ?? 42} /> There you are. Ask me anything — I read code, spot fixes, and open PRs.
+              <FlameMark hue={hue ?? 42} />
+              {token
+                ? ' There you are. Ask me anything — I read code, spot fixes, and open PRs.'
+                : ' Sign in with your Byte-ling account to chat with your own Anthropic key.'}
             </div>
           )}
           {messages.map((m, i) =>
@@ -85,7 +140,7 @@ function EmbedApp({ hue, dockSize }) {
             ) : (
               <div key={i} className="btlc-row">
                 <span className="btlc-ava"><FlameMark hue={hue ?? 42} /></span>
-                <div className="btlc-bubble btlc-bot">{m.text}</div>
+                <div className={`btlc-bubble btlc-bot ${m.error ? 'btlc-err' : ''}`}>{m.text}</div>
               </div>
             )
           )}
@@ -98,17 +153,23 @@ function EmbedApp({ hue, dockSize }) {
         </div>
 
         <div className="btlc-composer">
-          <textarea
-            className="btlc-input"
-            rows={1}
-            placeholder="Ask Byte-ling…"
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); submit(); }
-            }}
-          />
-          <button className="btlc-send" onClick={submit} disabled={!input.trim() || sending} aria-label="Send">↑</button>
+          {token ? (
+            <>
+              <textarea
+                className="btlc-input"
+                rows={1}
+                placeholder="Ask Byte-ling…"
+                value={input}
+                onChange={(e) => setInput(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); submit(); }
+                }}
+              />
+              <button className="btlc-send" onClick={submit} disabled={!input.trim() || sending} aria-label="Send">↑</button>
+            </>
+          ) : (
+            <button className="btlc-signin" onClick={signIn}>Sign in to chat</button>
+          )}
         </div>
       </div>
 
@@ -198,6 +259,12 @@ function EmbedStyles() {
         background: #e9e9ee; color: #17171b; font-size: 16px; font-weight: 700;
       }
       .btlc-send:disabled { opacity: .4; cursor: default; }
+      .btlc-err { background: rgba(220,70,70,.14); color: #ffb4b4; }
+      .btlc-signin {
+        flex: 1; height: 38px; border-radius: 10px; border: 0; cursor: pointer;
+        background: #e9e9ee; color: #17171b; font: inherit; font-size: 13.5px; font-weight: 700;
+      }
+      .btlc-signin:hover { filter: brightness(.95); }
 
       @media (prefers-color-scheme: light) {
         .btlc-panel { background: #ffffff; color: #17171b; border-color: #e6e6ea; }
@@ -206,7 +273,8 @@ function EmbedStyles() {
         .btlc-user { background: #17171b; color: #fff; }
         .btlc-input { background: #f6f6f8; color: #17171b; border-color: #e0e0e6; }
         .btlc-composer, .btlc-body .btlc-aside { border-color: #eee; }
-        .btlc-send { background: #17171b; color: #fff; }
+        .btlc-send, .btlc-signin { background: #17171b; color: #fff; }
+        .btlc-err { background: rgba(200,40,40,.1); color: #b22; }
       }
       @media (max-width: 420px) {
         .btlc-root { right: 12px; bottom: 12px; }
