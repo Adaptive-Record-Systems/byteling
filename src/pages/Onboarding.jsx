@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { getConnection, startGithubConnect, disconnectGithub, errInfo } from '@/api/byteling';
 import ApiKeyCard from '@/components/ApiKeyCard';
 import { Button } from '@/components/ui/button';
-import { Sparkles, Github, CheckCircle2, Loader2, Link2, ArrowRight, AlertTriangle } from 'lucide-react';
+import { Sparkles, Github, CheckCircle2, Loader2, Link2, ArrowRight, AlertTriangle, Puzzle } from 'lucide-react';
 
 const GITHUB_STATUS = {
   connected: { tone: 'success', text: 'GitHub connected.' },
@@ -142,6 +142,20 @@ export default function Onboarding({ onReady }) {
         )}
 
         {error && <p className="text-sm text-destructive mt-3">{error}</p>}
+
+        {/* Distribution: how to put Byte-ling somewhere other than here. */}
+        <div className="mt-10 pt-6 border-t border-border text-center">
+          <a
+            href="/install.html"
+            target="_blank"
+            rel="noreferrer"
+            className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground"
+          >
+            <Puzzle className="w-4 h-4" />
+            Want Byte-ling in your own app or browser? See how
+            <ArrowRight className="w-3.5 h-3.5" />
+          </a>
+        </div>
       </div>
     </div>
   );

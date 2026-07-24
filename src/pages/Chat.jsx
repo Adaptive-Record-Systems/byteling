@@ -11,7 +11,7 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
 import {
   Loader2, Send, FileCode, Plus, X, GitBranch, AlertTriangle, Settings, FolderGit2,
-  GitPullRequest, ExternalLink
+  GitPullRequest, ExternalLink, Puzzle
 } from 'lucide-react';
 import { Lantern, FlameMark, hueFromRepo } from '@/components/Lantern';
 import flameVideo from '@/assets/lantern/Flame_idle.mp4';
@@ -258,9 +258,21 @@ export default function Chat() {
             </PopoverContent>
           </Popover>
 
-          <Link to="/?setup=1" className="ml-auto text-muted-foreground hover:text-foreground" title="Setup">
-            <Settings className="w-4 h-4" />
-          </Link>
+          <div className="ml-auto flex items-center gap-3">
+            <a
+              href="/install.html"
+              target="_blank"
+              rel="noreferrer"
+              className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground"
+              title="Put Byte-ling on your own site or browser"
+            >
+              <Puzzle className="w-3.5 h-3.5" />
+              <span className="hidden sm:inline">Add to your app</span>
+            </a>
+            <Link to="/?setup=1" className="text-muted-foreground hover:text-foreground" title="Setup">
+              <Settings className="w-4 h-4" />
+            </Link>
+          </div>
         </div>
 
         {repoError && (
