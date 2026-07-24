@@ -14,6 +14,18 @@ chrome.action.onClicked.addListener(async (tab) => {
     return;
   }
   try {
+    // Toggle: if the companion is already on the page, take it back down.
+    const [{ result } = {}] = await chrome.scripting.executeScript({
+      target: { tabId: tab.id },
+      func: () => {
+        const el = document.querySelector('[data-byteling-root], byteling-companion');
+        if (el) { el.remove(); return 'removed'; }
+        return 'absent';
+      }
+    });
+    if (result === 'removed') return; // clicked again → dismissed
+
+    // Not present → summon it.
     await chrome.scripting.executeScript({ target: { tabId: tab.id }, files: ['embed.js'] });
   } catch (e) {
     console.warn('Byte-ling: cannot run on this page —', e && e.message);
