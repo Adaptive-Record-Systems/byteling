@@ -60,12 +60,11 @@
     /* real flame art (still + video), tinted by the same hue-rotate the lantern uses */
     #flame .art {
       position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain;
-      mix-blend-mode: screen;
-      filter: hue-rotate(calc((var(--hue) - 200) * 1deg)) brightness(1.12);
-      /* The flame clips aren't pure black at the edges, so screen-blend would
-         show their rectangle as a faint box. Feather the edges to nothing. */
-      -webkit-mask-image: radial-gradient(ellipse at 50% 50%, #000 60%, transparent 92%);
-              mask-image: radial-gradient(ellipse at 50% 50%, #000 60%, transparent 92%);
+      /* Key the black background to REAL transparency via a luminance→alpha SVG
+         filter (brightness becomes opacity: black → invisible, flame → opaque),
+         so it composites over ANY colour — not just dark backgrounds. No
+         mix-blend-mode, no black box. */
+      filter: hue-rotate(calc((var(--hue) - 200) * 1deg)) brightness(1.12) url(#flameAlpha);
     }
     #flame .blob { /* fallback CSS flame if the assets don't load */
       position: absolute; inset: 0;
@@ -114,6 +113,14 @@
       <button class="tool" id="mode">Flame: Comet</button>
       <button class="tool" id="cycle">Auto-cycle all cards</button>
     </div>
+    <div class="controls">
+      <span class="hint">Page background (test the flame over colour)</span>
+      <button class="tool swatch" data-bg="#0e0e10">Dark</button>
+      <button class="tool swatch" data-bg="#ffffff">White</button>
+      <button class="tool swatch" data-bg="#c0392b">Red</button>
+      <button class="tool swatch" data-bg="#2ecc71">Green</button>
+      <button class="tool swatch" data-bg="#f1c40f">Yellow</button>
+    </div>
     <p class="hint" style="margin:-6px 0 0;">Toggle Still vs Video to see the real flame art fly and change color. (Open this file directly — <code>start public\flame-demo.html</code> — so it can load the assets.)</p>
 
     <div class="targets" id="targets">
@@ -125,6 +132,19 @@
 
     <p class="hint" style="margin-top:26px;">Tip: resize the window — the flame recomputes its path from wherever the lantern and target land.</p>
   </div>
+
+  <!-- Luminance→alpha key: turns the flame clips' black background transparent
+       so they composite over any colour. Tune the alpha row (favours cyan) and
+       the gamma (crushes the faint near-black box) to taste. -->
+  <svg width="0" height="0" aria-hidden="true" style="position:absolute">
+    <filter id="flameAlpha" color-interpolation-filters="sRGB">
+      <feColorMatrix type="matrix" values="1 0 0 0 0
+                                           0 1 0 0 0
+                                           0 0 1 0 0
+                                           0.4 0.6 0.5 0 0" />
+      <feComponentTransfer><feFuncA type="gamma" amplitude="1.15" exponent="1.5" offset="0" /></feComponentTransfer>
+    </filter>
+  </svg>
 
   <div id="flame" data-mode="comet">
     <div class="halo"></div>
@@ -245,6 +265,12 @@
     document.getElementById('hue').addEventListener('input', (e) => {
       document.documentElement.style.setProperty('--hue', e.target.value);
     });
+
+    // Swap the page background to sanity-check the flame is truly transparent
+    // (no black box) over any colour.
+    document.querySelectorAll('.swatch').forEach((b) =>
+      b.addEventListener('click', () => { document.body.style.background = b.dataset.bg; })
+    );
 
     // Cycle which real flame asset flies: Comet → Still → Video.
     const modeBtn = document.getElementById('mode');
