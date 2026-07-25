@@ -116,12 +116,22 @@
         </div>
 
         <div class="panel active" id="p-base44" role="tabpanel">
-          <ol>
-            <li>Open your app in the <b>Base44 editor</b>.</li>
-            <li>Add a <b>Custom Code</b> / <b>Embed HTML</b> block to any page (or open the page's HTML view).</li>
-            <li><b>Paste</b> the line and <b>Publish</b>.</li>
-            <li>That's it — it loads from another site, so nothing else to set up.</li>
-          </ol>
+          <p style="margin:0 0 10px; color:var(--fg); font-weight:600;">✨ Easiest: let your Builder do it. Paste this prompt into the Base44 AI:</p>
+          <div class="snip" data-copy>
+            <code style="white-space:pre-wrap">Add the Byte-ling coding companion to my app. Put this exact line in index.html, just before the closing &lt;/body&gt; tag, so it loads on every page — and change nothing else:
+&lt;script src="https://byteling-baas-417f0fd8.base44.app/embed.js"&gt;&lt;/script&gt;</code>
+            <button class="copy">Copy</button>
+          </div>
+          <p style="font-size:13.5px; color:var(--muted); margin:10px 0 0;">The Builder edits <code style="font-size:12px">index.html</code> for you — no hunting for where the code goes. It loads on every page. Just <b style="color:var(--fg)">Publish</b> when it's done.</p>
+
+          <details style="margin-top:16px;">
+            <summary style="cursor:pointer; color:var(--muted); font-size:14px;">Prefer to paste it in yourself?</summary>
+            <ol style="margin:10px 0 0; padding-left:20px; color:var(--muted); font-size:14.5px;">
+              <li style="margin:6px 0;">Open your app in the <b>Base44 editor</b>.</li>
+              <li style="margin:6px 0;">Add a <b>Custom Code</b> / <b>Embed HTML</b> block to any page (or open the page's HTML view).</li>
+              <li style="margin:6px 0;"><b>Paste</b> the line and <b>Publish</b>.</li>
+            </ol>
+          </details>
           <figure class="walk" data-gif="base44" hidden>
             <img alt="Where to paste the Byte-ling line in Base44" />
             <figcaption>Paste → Publish in the Base44 editor.</figcaption>
