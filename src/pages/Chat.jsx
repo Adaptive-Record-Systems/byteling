@@ -14,6 +14,7 @@ import {
   GitPullRequest, ExternalLink, Puzzle
 } from 'lucide-react';
 import { Lantern, FlameMark, hueFromRepo } from '@/components/Lantern';
+import { FlyingFlame } from '@/components/FlyingFlame';
 import flameVideo from '@/assets/lantern/Flame_idle.mp4';
 
 const LAST_REPO_KEY = 'byteling_last_repo';
@@ -65,6 +66,9 @@ export default function Chat() {
   const [chatError, setChatError] = useState(null);
 
   const scrollRef = useRef(null);
+  const lanternWrapRef = useRef(null); // where the flame launches from / returns to
+  const flameFlyRef = useRef(null);    // imperative handle: flameFlyRef.current.flyTo(el)
+  const repoPillRef = useRef(null);    // the repo-name pill the flame flies to on open
 
   // ── Lantern character ──────────────────────────────────────────────
   // The flame reacts to real events (never a timer). `pulse` fires a one-shot
@@ -120,6 +124,8 @@ export default function Chat() {
       setContextFiles([]);
       localStorage.setItem(LAST_REPO_KEY, full);
       firePulse('drift'); // flame reaches out to the newly opened repo
+      // …and the living flame darts over to mark the repo it just opened.
+      setTimeout(() => flameFlyRef.current?.flyTo(repoPillRef.current), 380);
       if (!keepThread) {
         const prior = await loadMessages(session.id);
         setMessages(prior.map((m) => ({ role: m.role, text: m.text || '' })));
@@ -221,9 +227,12 @@ export default function Chat() {
     <div className="min-h-screen bg-background flex flex-col">
       {/* The lantern hangs from the top edge — a presence you forget is there
           until the moment you need the corner lit. It reacts to chat events. */}
-      <div className="fixed top-0 right-4 sm:right-8 z-20 pointer-events-none">
+      <div ref={lanternWrapRef} className="fixed top-0 right-4 sm:right-8 z-20 pointer-events-none">
         <Lantern mood={lanternMood} pulse={pulse} hue={lanternHue} flameVideo={flameVideo} />
       </div>
+
+      {/* The flame can leave the lantern to point at things on screen. */}
+      <FlyingFlame ref={flameFlyRef} hue={lanternHue ?? 200} homeRef={lanternWrapRef} />
 
       <div className="w-full max-w-3xl mx-auto px-4 py-4 flex-1 flex flex-col min-h-0">
         {/* Header */}
@@ -235,7 +244,7 @@ export default function Chat() {
 
           <Popover open={repoPickerOpen} onOpenChange={setRepoPickerOpen}>
             <PopoverTrigger asChild>
-              <button className="flex items-center gap-1.5 text-xs text-muted-foreground bg-muted hover:bg-muted/70 px-2.5 py-1 rounded-md">
+              <button ref={repoPillRef} className="flex items-center gap-1.5 text-xs text-muted-foreground bg-muted hover:bg-muted/70 px-2.5 py-1 rounded-md">
                 {loadingRepo ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <GitBranch className="w-3.5 h-3.5" />}
                 {repo ? repo.full_name : 'pick a repo'}
               </button>

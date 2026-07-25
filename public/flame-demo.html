@@ -1,0 +1,175 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Byte-ling — flying-flame preview</title>
+  <style>
+    :root { --hue: 200; color-scheme: dark; }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0; min-height: 100vh; background: #0e0e10; color: #ececed;
+      font-family: ui-sans-serif, system-ui, sans-serif; line-height: 1.6;
+      overflow: hidden;
+    }
+    .wrap { max-width: 760px; margin: 0 auto; padding: 56px 24px; }
+    h1 { font-size: 24px; font-weight: 800; margin: 0 0 6px; }
+    p { color: #a2a2ac; margin: 0 0 28px; font-size: 15px; }
+    .hint { font-size: 13px; color: #6f6f79; }
+
+    /* the "lantern" home marker, top-right — stands in for the real lantern */
+    .home {
+      position: fixed; top: 14px; right: 32px; width: 58px; height: 74px; z-index: 5;
+      display: flex; align-items: center; justify-content: center;
+    }
+    .home .vessel {
+      width: 40px; height: 56px; border-radius: 46% 46% 44% 44% / 40% 40% 60% 60%;
+      border: 2px solid hsl(var(--hue) 40% 45% / .7);
+      background: radial-gradient(ellipse at 50% 62%, hsl(var(--hue) 90% 60% / .25), transparent 70%);
+    }
+    .home .seed {
+      position: absolute; width: 12px; height: 18px;
+      background: radial-gradient(ellipse at 50% 74%, #fff, hsl(var(--hue) 100% 90%) 34%, hsl(var(--hue) 95% 60%) 66%, transparent);
+      border-radius: 50% 50% 50% 50% / 62% 62% 38% 38%;
+      filter: drop-shadow(0 0 8px hsl(var(--hue) 98% 62% / .8));
+      transition: opacity .2s ease;
+    }
+
+    .targets { display: grid; grid-template-columns: repeat(2, 1fr); gap: 14px; margin-top: 8px; }
+    .card {
+      background: #161619; border: 1px solid #2a2a31; border-radius: 12px;
+      padding: 16px 18px; cursor: pointer; user-select: none;
+    }
+    .card:hover { border-color: #3a3a44; }
+    .card b { display: block; color: #ececed; font-size: 14px; }
+    .card span { font-size: 12.5px; color: #8a8a94; }
+
+    .controls { display: flex; gap: 10px; align-items: center; margin: 26px 0 10px; flex-wrap: wrap; }
+    button.tool {
+      border: 1px solid #2a2a31; background: #17171b; color: #ececed; font: inherit; font-size: 13px;
+      padding: 7px 13px; border-radius: 9px; cursor: pointer;
+    }
+    button.tool:hover { border-color: hsl(var(--hue) 60% 55%); }
+    input[type=range] { accent-color: hsl(var(--hue) 80% 60%); }
+
+    /* the travelling flame */
+    #flame {
+      position: fixed; left: 0; top: 0; width: 46px; height: 46px; z-index: 60;
+      pointer-events: none; opacity: 0; will-change: transform;
+    }
+    #flame .blob {
+      position: absolute; inset: 0;
+      background: radial-gradient(ellipse at 50% 68%, #fff 0%, hsl(var(--hue) 100% 92%) 26%, hsl(var(--hue) 95% 60%) 58%, transparent 74%);
+      border-radius: 50% 50% 50% 50% / 60% 60% 40% 40%;
+      mix-blend-mode: screen;
+    }
+    #flame .halo {
+      position: absolute; inset: -45%;
+      background: radial-gradient(circle at 50% 55%, hsl(var(--hue) 95% 62% / .55), transparent 70%);
+      filter: blur(4px); mix-blend-mode: screen;
+    }
+
+    /* glow ring on the target */
+    #ring {
+      position: fixed; z-index: 59; pointer-events: none; border-radius: 10px; opacity: 0;
+      box-shadow: 0 0 0 2px hsl(var(--hue) 95% 62% / .9),
+                  0 0 16px 3px hsl(var(--hue) 95% 62% / .7),
+                  inset 0 0 12px hsl(var(--hue) 95% 62% / .35);
+    }
+    #ring.show { animation: ring-in .32s cubic-bezier(.2,.8,.2,1) both; }
+    @keyframes ring-in { 0% { opacity: 0; transform: scale(1.12);} 100% { opacity: 1; transform: scale(1);} }
+  </style>
+</head>
+<body>
+  <div class="home" id="home"><div class="vessel"></div><div class="seed" id="seed"></div></div>
+
+  <div class="wrap">
+    <h1>🏮 Flying-flame preview</h1>
+    <p>Click any card and Byte-ling's flame swoops from the lantern (top-right) to ring it, then flies home. This is the motion + glow-ring feel for the real component.</p>
+
+    <div class="controls">
+      <span class="hint">Flame color</span>
+      <input type="range" id="hue" min="0" max="360" value="200" />
+      <button class="tool" id="cycle">Auto-cycle all cards</button>
+    </div>
+
+    <div class="targets" id="targets">
+      <div class="card"><b>src/App.jsx</b><span>the file he changed</span></div>
+      <div class="card"><b>Open PR #128</b><span>the pull request he just opened</span></div>
+      <div class="card"><b>pick a repo</b><span>the repo he just opened</span></div>
+      <div class="card"><b>Add file to context</b><span>a control to point at</span></div>
+    </div>
+
+    <p class="hint" style="margin-top:26px;">Tip: resize the window — the flame recomputes its path from wherever the lantern and target land.</p>
+  </div>
+
+  <div id="flame"><div class="halo"></div><div class="blob"></div></div>
+  <div id="ring"></div>
+
+  <script>
+    const flame = document.getElementById('flame');
+    const ring = document.getElementById('ring');
+    const home = document.getElementById('home');
+    const seed = document.getElementById('seed');
+    let busy = false;
+
+    const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+
+    async function flyTo(targetEl, hold = 1300) {
+      if (busy) return;
+      const t = targetEl.getBoundingClientRect();
+      if (!t.width) return;
+      busy = true;
+
+      const h = home.getBoundingClientRect();
+      const startX = h.left + h.width * 0.5, startY = h.top + h.height * 0.52;
+      const endX = t.left + t.width / 2, endY = t.top + t.height / 2;
+      const ctrlX = (startX + endX) / 2 + (endY - startY) * 0.18;
+      const ctrlY = Math.min(startY, endY) - 60 - Math.abs(endX - startX) * 0.08;
+
+      const N = 26;
+      const frames = (rev) => {
+        const out = [];
+        for (let i = 0; i <= N; i++) {
+          const p = rev ? 1 - i / N : i / N;
+          const x = (1-p)**2*startX + 2*(1-p)*p*ctrlX + p*p*endX;
+          const y = (1-p)**2*startY + 2*(1-p)*p*ctrlY + p*p*endY;
+          const s = 0.62 + 0.4 * Math.sin(Math.min(p, 1 - p) * Math.PI);
+          out.push({ transform: `translate(${x}px, ${y}px) translate(-50%,-50%) scale(${s})` });
+        }
+        return out;
+      };
+
+      seed.style.opacity = 0.15;           // the flame "left" the lantern
+      flame.style.opacity = 1;
+      flame.style.transform = `translate(${startX}px, ${startY}px) translate(-50%,-50%) scale(0.62)`;
+      await flame.animate(frames(false), { duration: 720, easing: 'cubic-bezier(.34,.16,.2,1)', fill: 'forwards' }).finished;
+
+      const pad = 6;
+      Object.assign(ring.style, {
+        left: (t.left - pad) + 'px', top: (t.top - pad) + 'px',
+        width: (t.width + pad*2) + 'px', height: (t.height + pad*2) + 'px',
+      });
+      ring.classList.add('show');
+      await wait(hold);
+      ring.classList.remove('show');
+      ring.style.opacity = 0;
+
+      await flame.animate(frames(true), { duration: 620, easing: 'cubic-bezier(.4,0,.4,1)', fill: 'forwards' }).finished;
+      flame.style.opacity = 0;
+      seed.style.opacity = 1;              // flame is home
+      busy = false;
+    }
+
+    document.querySelectorAll('.card').forEach((c) => c.addEventListener('click', () => flyTo(c)));
+
+    document.getElementById('hue').addEventListener('input', (e) => {
+      document.documentElement.style.setProperty('--hue', e.target.value);
+    });
+
+    document.getElementById('cycle').addEventListener('click', async () => {
+      for (const c of document.querySelectorAll('.card')) { await flyTo(c, 900); await wait(250); }
+    });
+  </script>
+</body>
+</html>
