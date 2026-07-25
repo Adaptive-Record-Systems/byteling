@@ -69,7 +69,12 @@ export default function Chat() {
   const scrollRef = useRef(null);
   const lanternWrapRef = useRef(null); // where the flame launches from / returns to
   const flameFlyRef = useRef(null);    // imperative handle: flameFlyRef.current.flyTo(el)
-  const repoPillRef = useRef(null);    // the repo-name pill the flame flies to on open
+  // On-screen landmarks the flame can point at when the user asks "where is X?".
+  const repoPillRef = useRef(null);
+  const addFileRef = useRef(null);
+  const setupRef = useRef(null);
+  const composerRef = useRef(null);
+  const sendRef = useRef(null);
 
   // ── Lantern character ──────────────────────────────────────────────
   // The flame reacts to real events (never a timer). `pulse` fires a one-shot
@@ -174,6 +179,22 @@ export default function Chat() {
     }
   };
 
+  // The app's own controls Byte-ling can point the flame at. Labels only — no
+  // values, no sensitive fields (the API key lives on the Setup screen, not here).
+  const uiLandmarks = [
+    { id: 'repo-picker', label: 'Repo picker — choose which repository to open', ref: repoPillRef },
+    { id: 'add-file', label: 'Add file to context button', ref: addFileRef },
+    { id: 'setup', label: 'Setup / settings (GitHub connection and Anthropic API key)', ref: setupRef },
+    { id: 'composer', label: 'Message box where you type to Byte-ling', ref: composerRef },
+    { id: 'send', label: 'Send button', ref: sendRef },
+  ];
+  const collectUiElements = () =>
+    uiLandmarks.filter((l) => l.ref.current).map((l) => ({ id: l.id, label: l.label }));
+  const pointFlameAt = (id) => {
+    const l = uiLandmarks.find((x) => x.id === id);
+    if (l?.ref.current) flameFlyRef.current?.flyTo(l.ref.current);
+  };
+
   const buildContext = () => {
     if (!repo) return undefined;
     const paths = blobPaths.slice(0, MAX_TREE_LINES);
@@ -205,13 +226,16 @@ export default function Chat() {
         message: text,
         repoFullName: repo?.full_name,
         context: buildContext(),
-        repos: repoList.map((r) => ({ full_name: r.full_name, description: r.description }))
+        repos: repoList.map((r) => ({ full_name: r.full_name, description: r.description })),
+        uiElements: collectUiElements()
       });
       if (res.reply || res.pr_proposal) {
         setMessages((prev) => [...prev, { role: 'assistant', text: res.reply || '', proposal: res.pr_proposal || null }]);
         if (res.pr_proposal) firePulse('notice'); // flame leans in — a fix is on the table
       }
       if (res.open_repo) await loadRepo(res.open_repo, { keepThread: true });
+      // Byte-ling pointed at an on-screen control — send the flame to it.
+      if (res.point_at) setTimeout(() => pointFlameAt(res.point_at), 250);
     } catch (e) {
       const { message, code } = errInfo(e);
       setChatError(
@@ -279,7 +303,7 @@ export default function Chat() {
               <Puzzle className="w-3.5 h-3.5" />
               <span className="hidden sm:inline">Add to your app</span>
             </a>
-            <Link to="/?setup=1" className="text-muted-foreground hover:text-foreground" title="Setup">
+            <Link ref={setupRef} to="/?setup=1" className="text-muted-foreground hover:text-foreground" title="Setup">
               <Settings className="w-4 h-4" />
             </Link>
           </div>
@@ -307,7 +331,7 @@ export default function Chat() {
             ))}
             <Popover open={pickerOpen} onOpenChange={setPickerOpen}>
               <PopoverTrigger asChild>
-                <Button variant="outline" size="sm" className="h-7 gap-1 text-xs">
+                <Button ref={addFileRef} variant="outline" size="sm" className="h-7 gap-1 text-xs">
                   <Plus className="w-3 h-3" /> Add file to context
                 </Button>
               </PopoverTrigger>
@@ -413,6 +437,7 @@ export default function Chat() {
         {/* Composer — always available */}
         <div className="mt-3 flex items-end gap-2">
           <Textarea
+            ref={composerRef}
             placeholder={repo ? `Ask about ${repo.full_name}…` : 'Ask Byte-ling to open a repo, or describe one…'}
             value={input}
             onChange={(e) => setInput(e.target.value)}
@@ -425,7 +450,7 @@ export default function Chat() {
             rows={2}
             className="resize-none"
           />
-          <Button onClick={send} disabled={sending || !input.trim()} className="h-auto py-2">
+          <Button ref={sendRef} onClick={send} disabled={sending || !input.trim()} className="h-auto py-2">
             <Send className="w-4 h-4" />
           </Button>
         </div>
