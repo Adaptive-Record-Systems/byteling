@@ -193,6 +193,17 @@ Deno.serve(async (req) => {
           }))
       : [];
 
+    // On-screen controls the caller can point the flame at — id + human label
+    // ONLY (never values, never sensitive fields; the client is responsible for
+    // omitting password/secret inputs). Present only when the user asked to find
+    // something on screen.
+    const uiElements = Array.isArray(body.ui_elements)
+      ? (body.ui_elements as unknown[])
+          .filter((e) => e && typeof (e as { id?: unknown }).id === 'string' && typeof (e as { label?: unknown }).label === 'string')
+          .slice(0, 40)
+          .map((e) => ({ id: (e as { id: string }).id, label: (e as { label: string }).label }))
+      : [];
+
     // If a session is named, the caller must own it. History + persistence hang
     // off that. Read under the service role so we can verify ownership explicitly
     // rather than trusting the client.
@@ -261,6 +272,24 @@ Deno.serve(async (req) => {
             repo_full_name: { type: 'string', description: 'Exact owner/repo from the list' }
           },
           required: ['repo_full_name'],
+          additionalProperties: false
+        }
+      });
+    }
+
+    if (uiElements.length) {
+      const list = uiElements.map((e) => `- ${e.id}: ${e.label}`).join('\n');
+      system += `\n\nOn-screen controls you can point at (the user can see these on their screen right now; you cannot — this list is how you "see" them):\n${list}\n\nWhen the user asks where something on screen is, or to show/find a control, match their words to the closest item and call point_at with its exact id — the flame will fly over to it. If nothing here matches, say so plainly and do NOT call the tool. Only point when they actually ask to be shown something on screen.`;
+      tools.push({
+        name: 'point_at',
+        description:
+          'Point the flame at an on-screen control the user asked about. element_id MUST be an exact id from the provided on-screen controls list.',
+        input_schema: {
+          type: 'object',
+          properties: {
+            element_id: { type: 'string', description: 'Exact id from the on-screen controls list' }
+          },
+          required: ['element_id'],
           additionalProperties: false
         }
       });
@@ -424,6 +453,7 @@ Deno.serve(async (req) => {
     // stray value can't point the frontend at an arbitrary repo. propose_pr is
     // returned for the user to confirm — this function never opens the PR.
     let openRepo: string | undefined;
+    let pointAt: string | undefined;
     let prProposal: { title: string; body: string; changes: { path: string; content: string }[] } | undefined;
     for (const block of final.content) {
       if (block.type !== 'tool_use') continue;
@@ -431,6 +461,11 @@ Deno.serve(async (req) => {
         const target = (block.input as { repo_full_name?: unknown })?.repo_full_name;
         if (typeof target === 'string' && repos.some((r) => r.full_name === target)) {
           openRepo = target;
+        }
+      } else if (block.name === 'point_at') {
+        const target = (block.input as { element_id?: unknown })?.element_id;
+        if (typeof target === 'string' && uiElements.some((e) => e.id === target)) {
+          pointAt = target;
         }
       } else if (block.name === 'propose_pr') {
         const inp = block.input as { title?: unknown; body?: unknown; changes?: unknown };
@@ -483,6 +518,7 @@ Deno.serve(async (req) => {
     return Response.json({
       reply,
       open_repo: openRepo,
+      point_at: pointAt,
       pr_proposal: prProposal,
       session_id: sessionId ?? undefined,
       sequence_number: assistantSeq
