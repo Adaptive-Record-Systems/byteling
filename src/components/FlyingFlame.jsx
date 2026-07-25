@@ -57,9 +57,22 @@ export const FlyingFlame = forwardRef(function FlyingFlame({ hue = 200, homeRef 
       const endX = target.left + target.width / 2;
       const endY = target.top + target.height / 2;
 
-      // Quadratic control point lifted up-and-over → a swoop, not a slide.
-      const ctrlX = (startX + endX) / 2 + (endY - startY) * 0.18;
-      const ctrlY = Math.min(startY, endY) - 60 - Math.abs(endX - startX) * 0.08;
+      // Bow the arc perpendicular to the straight lantern→target line, lofting
+      // upward and scaling with distance — so the curve bends by WHERE the target
+      // is relative to the lantern: a short hop barely curves, a long cross-screen
+      // trip sweeps high, and left/right/down each bend their own way.
+      const dx = endX - startX;
+      const dy = endY - startY;
+      const dist = Math.hypot(dx, dy) || 1;
+      let nx = -dy / dist; // perpendicular to the path…
+      let ny = dx / dist;
+      if (ny > 0) { nx = -nx; ny = -ny; } // …chosen so the arc always lofts upward
+      const bow = Math.min(Math.max(dist * 0.24, 26), 150);
+      // Keep the control point on-screen so a near-edge flight (e.g. lantern →
+      // repo pill, both near the top) just flattens instead of arcing off-screen.
+      const M = 10;
+      const ctrlX = Math.max(M, Math.min(window.innerWidth - M, (startX + endX) / 2 + nx * bow));
+      const ctrlY = Math.max(M, Math.min(window.innerHeight - M, (startY + endY) / 2 + ny * bow));
 
       const N = 26;
       const frames = (reverse) => {
