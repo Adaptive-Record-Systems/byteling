@@ -11,8 +11,9 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
 import {
   Loader2, Send, FileCode, Plus, X, GitBranch, AlertTriangle, Settings, FolderGit2,
-  GitPullRequest, ExternalLink, Puzzle
+  GitPullRequest, ExternalLink, Puzzle, LogOut
 } from 'lucide-react';
+import { useAuth } from '@/lib/AuthContext';
 import { Lantern, FlameMark, hueFromRepo } from '@/components/Lantern';
 import { FlyingFlame } from '@/components/FlyingFlame';
 import flameVideo from '@/assets/lantern/Flame_idle.mp4';
@@ -51,6 +52,7 @@ function ByteAvatar({ hue = 42 }) {
 }
 
 export default function Chat() {
+  const { logout } = useAuth(); // Sign out → clears the token (localStorage) + server cookie
   const [connection, setConnection] = useState(null);
   const [repos, setRepos] = useState([]);
   const [repo, setRepo] = useState(null);
@@ -315,6 +317,13 @@ export default function Chat() {
             <Link ref={setupRef} to="/?setup=1" className="text-muted-foreground hover:text-foreground" title="Setup">
               <Settings className="w-4 h-4" />
             </Link>
+            <button
+              onClick={() => logout()}
+              className="text-muted-foreground hover:text-foreground"
+              title="Sign out"
+            >
+              <LogOut className="w-4 h-4" />
+            </button>
           </div>
         </div>
 
