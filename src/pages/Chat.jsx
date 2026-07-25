@@ -16,6 +16,7 @@ import {
 import { Lantern, FlameMark, hueFromRepo } from '@/components/Lantern';
 import { FlyingFlame } from '@/components/FlyingFlame';
 import flameVideo from '@/assets/lantern/Flame_idle.mp4';
+import cometVideo from '@/assets/lantern/flame-comet.mp4';
 
 const LAST_REPO_KEY = 'byteling_last_repo';
 const MAX_TREE_LINES = 1200;
@@ -232,7 +233,7 @@ export default function Chat() {
       </div>
 
       {/* The flame can leave the lantern to point at things on screen. */}
-      <FlyingFlame ref={flameFlyRef} hue={lanternHue ?? 200} homeRef={lanternWrapRef} />
+      <FlyingFlame ref={flameFlyRef} hue={lanternHue ?? 200} homeRef={lanternWrapRef} comet={cometVideo} flame={flameVideo} />
 
       <div className="w-full max-w-3xl mx-auto px-4 py-4 flex-1 flex flex-col min-h-0">
         {/* Header */}
