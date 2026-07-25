@@ -124,8 +124,16 @@
       const h = home.getBoundingClientRect();
       const startX = h.left + h.width * 0.5, startY = h.top + h.height * 0.52;
       const endX = t.left + t.width / 2, endY = t.top + t.height / 2;
-      const ctrlX = (startX + endX) / 2 + (endY - startY) * 0.18;
-      const ctrlY = Math.min(startY, endY) - 60 - Math.abs(endX - startX) * 0.08;
+      // Bow perpendicular to the lantern→target line, lofting up, scaled by
+      // distance — the arc bends by where the target is, not a fixed up-arc.
+      const dx = endX - startX, dy = endY - startY;
+      const dist = Math.hypot(dx, dy) || 1;
+      let nx = -dy / dist, ny = dx / dist;
+      if (ny > 0) { nx = -nx; ny = -ny; }
+      const bow = Math.min(Math.max(dist * 0.24, 26), 150);
+      const M = 10; // keep the arc's control point on-screen near edges
+      const ctrlX = Math.max(M, Math.min(window.innerWidth - M, (startX + endX) / 2 + nx * bow));
+      const ctrlY = Math.max(M, Math.min(window.innerHeight - M, (startY + endY) / 2 + ny * bow));
 
       const N = 26;
       const frames = (rev) => {
