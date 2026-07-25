@@ -69,8 +69,12 @@
       border-radius: 50% 50% 50% 50% / 60% 60% 40% 40%;
       mix-blend-mode: screen;
     }
-    #flame[data-mode="still"] #flameVid,
-    #flame[data-mode="video"] #flameImg { display: none; }
+    #flame .art { display: none; }
+    #flame[data-mode="still"]  #flameImg,
+    #flame[data-mode="video"]  #flameVid,
+    #flame[data-mode="comet"]  #flameComet { display: block; }
+    #flame[data-mode="comet"] { width: 92px; height: 92px; }   /* a comet needs room */
+    #flame[data-mode="comet"] .halo { display: none; }         /* it carries its own glow */
     #flame .halo {
       position: absolute; inset: -45%;
       background: radial-gradient(circle at 50% 55%, hsl(var(--hue) 95% 62% / .55), transparent 70%);
@@ -98,7 +102,7 @@
     <div class="controls">
       <span class="hint">Flame color</span>
       <input type="range" id="hue" min="0" max="360" value="200" />
-      <button class="tool" id="mode">Flame: Video</button>
+      <button class="tool" id="mode">Flame: Comet</button>
       <button class="tool" id="cycle">Auto-cycle all cards</button>
     </div>
     <p class="hint" style="margin:-6px 0 0;">Toggle Still vs Video to see the real flame art fly and change color. (Open this file directly — <code>start public\flame-demo.html</code> — so it can load the assets.)</p>
@@ -113,10 +117,11 @@
     <p class="hint" style="margin-top:26px;">Tip: resize the window — the flame recomputes its path from wherever the lantern and target land.</p>
   </div>
 
-  <div id="flame" data-mode="video">
+  <div id="flame" data-mode="comet">
     <div class="halo"></div>
     <img id="flameImg" class="art" src="../src/assets/lantern/flame.png" alt="" />
     <video id="flameVid" class="art" src="../src/assets/lantern/Flame_idle.mp4" muted loop playsinline autoplay></video>
+    <video id="flameComet" class="art" src="../src/assets/lantern/0725/0725.mp4" muted loop playsinline autoplay></video>
   </div>
   <div id="ring"></div>
 
@@ -150,6 +155,8 @@
       const ctrlY = Math.max(M, Math.min(window.innerHeight - M, (startY + endY) / 2 + ny * bow));
 
       const N = 26;
+      const isComet = flame.dataset.mode === 'comet';
+      const SRC_FORWARD = -44; // deg: the comet art's head points up-right in its source frame
       const frames = (rev) => {
         const out = [];
         for (let i = 0; i <= N; i++) {
@@ -157,7 +164,16 @@
           const x = (1-p)**2*startX + 2*(1-p)*p*ctrlX + p*p*endX;
           const y = (1-p)**2*startY + 2*(1-p)*p*ctrlY + p*p*endY;
           const s = 0.62 + 0.4 * Math.sin(Math.min(p, 1 - p) * Math.PI);
-          out.push({ transform: `translate(${x}px, ${y}px) translate(-50%,-50%) scale(${s})` });
+          let rot = '';
+          if (isComet) {
+            // tangent of the quadratic bézier = direction of travel; head leads it
+            let tx = 2*(1-p)*(ctrlX-startX) + 2*p*(endX-ctrlX);
+            let ty = 2*(1-p)*(ctrlY-startY) + 2*p*(endY-ctrlY);
+            if (rev) { tx = -tx; ty = -ty; }            // flying home → velocity reverses
+            const deg = Math.atan2(ty, tx) * 180 / Math.PI - SRC_FORWARD;
+            rot = ` rotate(${deg}deg)`;
+          }
+          out.push({ transform: `translate(${x}px, ${y}px) translate(-50%,-50%)${rot} scale(${s})` });
         }
         return out;
       };
@@ -189,12 +205,14 @@
       document.documentElement.style.setProperty('--hue', e.target.value);
     });
 
-    // Still vs Video: swap which real flame asset flies.
+    // Cycle which real flame asset flies: Comet → Still → Video.
     const modeBtn = document.getElementById('mode');
+    const MODES = ['comet', 'still', 'video'];
+    const LABEL = { comet: 'Comet', still: 'Still', video: 'Video' };
     modeBtn.addEventListener('click', () => {
-      const next = flame.dataset.mode === 'video' ? 'still' : 'video';
+      const next = MODES[(MODES.indexOf(flame.dataset.mode) + 1) % MODES.length];
       flame.dataset.mode = next;
-      modeBtn.textContent = 'Flame: ' + (next === 'video' ? 'Video' : 'Still');
+      modeBtn.textContent = 'Flame: ' + LABEL[next];
     });
 
     document.getElementById('cycle').addEventListener('click', async () => {
