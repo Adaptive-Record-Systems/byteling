@@ -1,4 +1,4 @@
-import React, { forwardRef, useImperativeHandle, useCallback, useRef, useState } from 'react';
+import React, { forwardRef, useImperativeHandle, useCallback, useEffect, useRef, useState } from 'react';
 import flameImg from '@/assets/lantern/flame.png';
 
 /**
@@ -20,12 +20,21 @@ const reducedMotion = () =>
   window.matchMedia &&
   window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
-export const FlyingFlame = forwardRef(function FlyingFlame({ hue = 200, homeRef }, ref) {
+export const FlyingFlame = forwardRef(function FlyingFlame({ hue = 200, homeRef, video = null }, ref) {
   const flameRef = useRef(null);
+  const videoRef = useRef(null);
   const [ring, setRing] = useState(null); // { left, top, width, height }
   const [flying, setFlying] = useState(false);
   const busy = useRef(false);
   const tint = hue == null ? 200 : hue;
+
+  // Only run the flame video while it's actually out flying — no idle decode.
+  useEffect(() => {
+    const v = videoRef.current;
+    if (!v) return;
+    if (flying) { const p = v.play(); if (p && p.catch) p.catch(() => {}); }
+    else v.pause();
+  }, [flying]);
 
   const flyTo = useCallback(
     async (targetEl, { hold = 1300 } = {}) => {
@@ -145,20 +154,40 @@ export const FlyingFlame = forwardRef(function FlyingFlame({ hue = 200, homeRef 
             mixBlendMode: 'screen',
           }}
         />
-        <img
-          src={flameImg}
-          alt=""
-          draggable="false"
-          style={{
-            position: 'absolute',
-            inset: 0,
-            width: '100%',
-            height: '100%',
-            objectFit: 'contain',
-            mixBlendMode: 'screen',
-            filter: `hue-rotate(${tint - 200}deg) brightness(1.15)`,
-          }}
-        />
+        {video ? (
+          <video
+            ref={videoRef}
+            src={video}
+            muted
+            loop
+            playsInline
+            aria-hidden="true"
+            style={{
+              position: 'absolute',
+              inset: 0,
+              width: '100%',
+              height: '100%',
+              objectFit: 'contain',
+              mixBlendMode: 'screen',
+              filter: `hue-rotate(${tint - 200}deg) brightness(1.15)`,
+            }}
+          />
+        ) : (
+          <img
+            src={flameImg}
+            alt=""
+            draggable="false"
+            style={{
+              position: 'absolute',
+              inset: 0,
+              width: '100%',
+              height: '100%',
+              objectFit: 'contain',
+              mixBlendMode: 'screen',
+              filter: `hue-rotate(${tint - 200}deg) brightness(1.15)`,
+            }}
+          />
+        )}
       </div>
 
       {/* glow ring on the target */}
