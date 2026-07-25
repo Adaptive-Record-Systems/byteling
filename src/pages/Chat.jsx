@@ -188,11 +188,20 @@ export default function Chat() {
     { id: 'composer', label: 'Message box where you type to Byte-ling', ref: composerRef },
     { id: 'send', label: 'Send button', ref: sendRef },
   ];
+  // Dead-zone guard: never offer (or point at) a password/secret control, even
+  // if one is mistakenly added to the registry later. Same selectors the
+  // host-page scanner will use. Enforced in code, not just by curation.
+  const SENSITIVE_SEL =
+    'input[type="password"], [autocomplete*="password"], [autocomplete*="cc-"], [data-sensitive]';
+  const isSensitive = (el) =>
+    !!el && (el.matches?.(SENSITIVE_SEL) || !!el.querySelector?.(SENSITIVE_SEL));
   const collectUiElements = () =>
-    uiLandmarks.filter((l) => l.ref.current).map((l) => ({ id: l.id, label: l.label }));
+    uiLandmarks
+      .filter((l) => l.ref.current && !isSensitive(l.ref.current))
+      .map((l) => ({ id: l.id, label: l.label }));
   const pointFlameAt = (id) => {
     const l = uiLandmarks.find((x) => x.id === id);
-    if (l?.ref.current) flameFlyRef.current?.flyTo(l.ref.current);
+    if (l?.ref.current && !isSensitive(l.ref.current)) flameFlyRef.current?.flyTo(l.ref.current);
   };
 
   const buildContext = () => {
