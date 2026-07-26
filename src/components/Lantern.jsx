@@ -38,6 +38,7 @@ import flameImg from '@/assets/lantern/flame.png';
 
 const REACTION_MS = 1600;
 const WINGS_OPEN = new Set(['thinking', 'drift', 'notice', 'spark']);
+const THINKING_HUE = 280; // flame shifts toward violet while Byte is thinking/working
 
 export function Lantern({ mood = 'resting', pulse, hue = null, className = '', flameVideo = null, size = 160 }) {
   const [reaction, setReaction] = useState(null);
@@ -84,11 +85,14 @@ export function Lantern({ mood = 'resting', pulse, hue = null, className = '', f
   const tint = hue == null ? 200 : hue;
   const state = reaction || mood;
   const wingsOpen = WINGS_OPEN.has(state);
+  // While thinking, the flame shifts to a distinct hue so "he's working" is
+  // visible at a glance (transitions smoothly back when done).
+  const activeTint = state === 'thinking' ? THINKING_HUE : tint;
 
   return (
     <div
       className={`btl-lantern btl-${state} ${wingsOpen ? 'btl-wings-open' : ''} ${className}`}
-      style={{ '--btl-hue': tint, '--btl-size': typeof size === 'number' ? `${size}px` : size }}
+      style={{ '--btl-hue': activeTint, '--btl-size': typeof size === 'number' ? `${size}px` : size }}
       role="img"
       aria-label={`Byte-ling — ${reaction || mood}`}
     >
@@ -179,6 +183,7 @@ function LanternStyles() {
         transform-origin: 50% 100%;
         mix-blend-mode: screen;
         filter: hue-rotate(var(--flame-rot));
+        transition: filter .5s ease; /* smooth colour shift when thinking */
       }
       .btl-flame-glow {
         position: absolute;
