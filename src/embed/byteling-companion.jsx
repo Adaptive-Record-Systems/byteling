@@ -88,6 +88,20 @@ function pickNudge(name) {
   return all[Math.floor(Math.random() * all.length)];
 }
 const IDLE_MS = 5 * 60 * 1000; // quiet for this long → Byte checks in once
+
+// Ambient "poke": occasionally the flame drifts over to the last control the
+// user clicked and drops a light, curated remark. Fully LOCAL — the label never
+// leaves the browser — credential-blind, and only ever a control's label.
+const POKE_MS = 3 * 60 * 1000;
+const POKES = [
+  (l) => `Poking at "${l}"?`,
+  (l) => `Ah, "${l}" — shout if you want a hand there.`,
+  (l) => `Saw you tap "${l}".`,
+  (l) => `"${l}" — want me to dig into that?`,
+];
+function pokeComment(label) {
+  return POKES[Math.floor(Math.random() * POKES.length)](label);
+}
 function readPos() {
   try {
     const p = JSON.parse(localStorage.getItem(POS_KEY));
@@ -185,6 +199,7 @@ function EmbedApp({ hue, dockSize: initialDockSize }) {
   const flyRef = useRef(null);   // FlyingFlame handle: flyRef.current.flyTo(hostEl)
   const lastActivityRef = useRef(Date.now()); // for the ambient check-in timer
   const nudgedRef = useRef(false);
+  const lastClickRef = useRef(null); // { el, label, at, commented } — for the ambient poke
 
   const fire = (kind) => setPulse({ id: ++idRef.current, kind });
   // Reset the idle clock on any real interaction so Byte only checks in when
@@ -232,6 +247,45 @@ function EmbedApp({ hue, dockSize: initialDockSize }) {
     return () => clearInterval(iv);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token, name]);
+
+  // Remember the last host-page control the user clicked, for the ambient poke.
+  // Stays entirely local (a ref); credential-blind; label only, never values.
+  // A click is real activity, so it also resets the idle check-in.
+  useEffect(() => {
+    if (!token) return;
+    const onClick = (e) => {
+      const el = e.target?.closest?.('button, a[href], [role="button"], [role="link"], [role="tab"], [role="menuitem"], summary');
+      if (!el) return;
+      if (el.matches(HOST_SENSITIVE_SEL) || el.closest(HOST_SENSITIVE_SEL)) return; // dead zone
+      const label = (el.getAttribute('aria-label') || el.textContent || el.value || el.getAttribute('title') || '')
+        .replace(/\s+/g, ' ').trim().slice(0, 48);
+      if (!label) return;
+      lastClickRef.current = { el, label, at: Date.now(), commented: false };
+      bump();
+    };
+    document.addEventListener('click', onClick, true);
+    return () => document.removeEventListener('click', onClick, true);
+  }, [token]);
+
+  // Ambient poke: now and then, drift the flame over to the thing they just
+  // clicked and drop a light remark. Occasional (not clockwork), only on a fresh
+  // click, only if it's still on screen, never into a backgrounded tab.
+  useEffect(() => {
+    if (!token) return;
+    const iv = setInterval(() => {
+      if (typeof document !== 'undefined' && document.visibilityState !== 'visible') return;
+      const lc = lastClickRef.current;
+      if (!lc || lc.commented || Date.now() - lc.at > POKE_MS) return;
+      if (Math.random() < 0.5) return; // keep it a surprise, not every tick
+      const r = lc.el?.getBoundingClientRect?.();
+      if (!r || r.width < 4) return; // gone or off-screen
+      lc.commented = true;
+      flyRef.current?.flyTo(lc.el, { hold: 1100 });
+      setMessages((m) => [...m, { role: 'assistant', text: pokeComment(lc.label) }]);
+      fire('drift');
+    }, POKE_MS);
+    return () => clearInterval(iv);
+  }, [token]);
 
   const clearToken = () => {
     setToken(null);
