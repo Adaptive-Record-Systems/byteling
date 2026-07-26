@@ -279,7 +279,7 @@ Deno.serve(async (req) => {
 
     if (uiElements.length) {
       const list = uiElements.map((e) => `- ${e.id}: ${e.label}`).join('\n');
-      system += `\n\nOn-screen controls you can point at (the user can see these on their screen right now; you cannot — this list is how you "see" them):\n${list}\n\nWhen the user asks where something on screen is, or to show/find a control, match their words to the closest item and call point_at with its exact id — the flame will fly over to it. If nothing here matches, say so plainly and do NOT call the tool. Only point when they actually ask to be shown something on screen.`;
+      system += `\n\nOn-screen controls you can point at (the user can see these on their screen right now; you cannot — this list is how you "see" them):\n${list}\n\nWhen the user's phrasing is a locate request — "where is…", "show me…", "point (me) to…", "take me to…", "find…", "which … " — treat it as asking you to point on screen. Match their words to the closest control here and call point_at with its exact id; the flame flies to it. Prefer pointing over searching the code or asking a clarifying question — do not ask "is this in the app or the code?" when a control here plausibly matches; just point. Only fall back to code (or say you can't see it) when nothing in this list is a plausible match.`;
       tools.push({
         name: 'point_at',
         description:

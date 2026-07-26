@@ -95,7 +95,7 @@ const MAX_TREE_LINES = 1000;
 
 // Only scan the host page when the user is actually asking to be shown where
 // something is — never in the background.
-const LOCATE_RE = /\b(where|point (me )?(to|at)|highlight|take me to|jump to|show me where|which (button|tab|link|menu|control|option|setting))\b/i;
+const LOCATE_RE = /\b(where('?s| is| are)?|show me|point (me )?(to|at)|take me to|jump to|highlight|find( me)? the|locate|which (button|tab|link|menu|control|option|setting|one))\b/i;
 // Dead zones: never scan password/secret controls. Same selectors the app uses.
 const HOST_SENSITIVE_SEL = 'input[type="password"], [autocomplete*="password"], [autocomplete*="cc-"], [data-sensitive]';
 
