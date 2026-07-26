@@ -11,7 +11,7 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
 import {
   Loader2, Send, FileCode, Plus, X, GitBranch, AlertTriangle, Settings, FolderGit2,
-  GitPullRequest, ExternalLink, Puzzle, LogOut
+  GitPullRequest, ExternalLink, Puzzle, LogOut, Paperclip
 } from 'lucide-react';
 import { useAuth } from '@/lib/AuthContext';
 import { Lantern, FlameMark, hueFromRepo } from '@/components/Lantern';
@@ -21,6 +21,17 @@ import cometVideo from '@/assets/lantern/flame-comet.mp4';
 
 const LAST_REPO_KEY = 'byteling_last_repo';
 const MAX_TREE_LINES = 1200;
+
+// Read an image File/Blob into a data URL for the vision call.
+function readImageFile(file) {
+  return new Promise((resolve) => {
+    if (!file || !/^image\//.test(file.type)) return resolve(null);
+    const reader = new FileReader();
+    reader.onload = () => resolve(typeof reader.result === 'string' ? reader.result : null);
+    reader.onerror = () => resolve(null);
+    reader.readAsDataURL(file);
+  });
+}
 
 const md = {
   p: (p) => <p className="mb-2 last:mb-0 leading-relaxed" {...p} />,
@@ -65,6 +76,7 @@ export default function Chat() {
 
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState('');
+  const [image, setImage] = useState(null); // attached screenshot (data URL) for vision
   const [sending, setSending] = useState(false);
   const [chatError, setChatError] = useState(null);
 
@@ -215,10 +227,12 @@ export default function Chat() {
 
   const send = async () => {
     const text = input.trim();
-    if (!text || sending) return;
+    if ((!text && !image) || sending) return;
     setChatError(null);
+    const shot = image; // the attached screenshot, sent once with this turn
     setInput('');
-    setMessages((prev) => [...prev, { role: 'user', text }]);
+    setImage(null);
+    setMessages((prev) => [...prev, { role: 'user', text: text || 'What do you see here?', image: shot }]);
     setSending(true);
     try {
       // Ensure the repo list is loaded before we ask — if the mount fetch
@@ -238,7 +252,8 @@ export default function Chat() {
         repoFullName: repo?.full_name,
         context: buildContext(),
         repos: repoList.map((r) => ({ full_name: r.full_name, description: r.description })),
-        uiElements: collectUiElements()
+        uiElements: collectUiElements(),
+        image: shot // a screenshot for Byte to actually see
       });
       if (res.reply || res.pr_proposal) {
         setMessages((prev) => [...prev, { role: 'assistant', text: res.reply || '', proposal: res.pr_proposal || null }]);
@@ -384,6 +399,7 @@ export default function Chat() {
             m.role === 'user' ? (
               <div key={i} className="flex justify-end">
                 <div className="max-w-[85%] rounded-2xl rounded-br-sm bg-primary text-primary-foreground px-4 py-2 text-sm whitespace-pre-wrap">
+                  {m.image && <img src={m.image} alt="attached screenshot" className="rounded-lg mb-2 max-w-full" />}
                   {m.text}
                 </div>
               </div>
@@ -453,24 +469,56 @@ export default function Chat() {
         {chatError && <p className="text-sm text-destructive mt-2">{chatError}</p>}
 
         {/* Composer — always available */}
-        <div className="mt-3 flex items-end gap-2">
-          <Textarea
-            ref={composerRef}
-            placeholder={repo ? `Ask about ${repo.full_name}…` : 'Ask Byte-ling to open a repo, or describe one…'}
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter' && !e.shiftKey) {
-                e.preventDefault();
-                send();
-              }
-            }}
-            rows={2}
-            className="resize-none"
-          />
-          <Button ref={sendRef} onClick={send} disabled={sending || !input.trim()} className="h-auto py-2">
-            <Send className="w-4 h-4" />
-          </Button>
+        <div className="mt-3">
+          {image && (
+            <div className="flex items-center gap-2 mb-2 w-fit text-xs text-muted-foreground bg-muted/50 border border-border rounded-lg px-2 py-1.5">
+              <img src={image} alt="attached screenshot" className="w-8 h-8 object-cover rounded" />
+              <span>Screenshot attached</span>
+              <button onClick={() => setImage(null)} className="hover:text-destructive" aria-label="Remove screenshot">
+                <X className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          )}
+          <div className="flex items-end gap-2">
+            <label
+              className="h-auto py-2 px-2 rounded-md text-muted-foreground hover:text-foreground hover:bg-muted cursor-pointer flex items-center"
+              title="Attach a screenshot for Byte-ling to see"
+            >
+              <Paperclip className="w-4 h-4" />
+              <input
+                type="file"
+                accept="image/*"
+                className="hidden"
+                onChange={async (e) => { const url = await readImageFile(e.target.files?.[0]); if (url) setImage(url); e.target.value = ''; }}
+              />
+            </label>
+            <Textarea
+              ref={composerRef}
+              placeholder={image ? 'Ask about this screenshot…' : (repo ? `Ask about ${repo.full_name}…` : 'Ask Byte-ling to open a repo, or describe one…')}
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              onPaste={async (e) => {
+                const cd = e.clipboardData;
+                let file = cd?.files?.length ? [...cd.files].find((f) => f.type.startsWith('image/')) : null;
+                if (!file && cd?.items) {
+                  const it = [...cd.items].find((x) => x.kind === 'file' && x.type.startsWith('image/'));
+                  if (it) file = it.getAsFile();
+                }
+                if (file) { e.preventDefault(); const url = await readImageFile(file); if (url) setImage(url); }
+              }}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && !e.shiftKey) {
+                  e.preventDefault();
+                  send();
+                }
+              }}
+              rows={2}
+              className="resize-none"
+            />
+            <Button ref={sendRef} onClick={send} disabled={sending || (!input.trim() && !image)} className="h-auto py-2">
+              <Send className="w-4 h-4" />
+            </Button>
+          </div>
         </div>
       </div>
     </div>
