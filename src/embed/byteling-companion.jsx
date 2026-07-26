@@ -404,6 +404,44 @@ function EmbedApp({ hue, dockSize: initialDockSize }) {
     }
   };
 
+  // "Let Byte see my screen" — the browser's screen-share permission picker.
+  // The user chooses what to share; grab one downscaled frame and attach it.
+  const captureScreen = async () => {
+    if (!navigator.mediaDevices?.getDisplayMedia) {
+      setMessages((m) => [...m, { role: 'assistant', text: "Screen capture isn't available here — paste or attach a screenshot instead.", error: true }]);
+      return;
+    }
+    let stream;
+    try {
+      stream = await navigator.mediaDevices.getDisplayMedia({ video: true });
+    } catch (e) {
+      if (e?.name !== 'NotAllowedError' && e?.name !== 'AbortError') {
+        setMessages((m) => [...m, { role: 'assistant', text: 'Could not start screen capture.', error: true }]);
+      }
+      return; // user cancelled the picker
+    }
+    try {
+      const video = document.createElement('video');
+      video.srcObject = stream;
+      await video.play();
+      await new Promise((r) => setTimeout(r, 250));
+      const maxW = 1600;
+      const vw = video.videoWidth || maxW;
+      const vh = video.videoHeight || 900;
+      const scale = Math.min(1, maxW / vw);
+      const canvas = document.createElement('canvas');
+      canvas.width = Math.round(vw * scale);
+      canvas.height = Math.round(vh * scale);
+      canvas.getContext('2d').drawImage(video, 0, 0, canvas.width, canvas.height);
+      setImage(canvas.toDataURL('image/jpeg', 0.85));
+      if (!open) setOpen(true);
+    } catch {
+      setMessages((m) => [...m, { role: 'assistant', text: 'Could not capture the screen.', error: true }]);
+    } finally {
+      stream.getTracks().forEach((t) => t.stop());
+    }
+  };
+
   const submit = async () => {
     const text = input.trim();
     if ((!text && !image) || sending) return;
@@ -592,6 +630,9 @@ function EmbedApp({ hue, dockSize: initialDockSize }) {
                 <input type="file" accept="image/*" style={{ display: 'none' }}
                   onChange={async (e) => { const url = await readImageFile(e.target.files?.[0]); if (url) setImage(url); e.target.value = ''; }} />
               </label>
+              <button type="button" className="btlc-attach" title="Let Byte-ling see your screen — you pick what to share" onClick={captureScreen}>
+                <img alt="" src="data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%23888' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><rect x='2' y='3' width='20' height='14' rx='2'/><path d='M8 21h8M12 17v-4'/></svg>" />
+              </button>
               <textarea
                 className="btlc-input"
                 rows={1}
@@ -747,7 +788,7 @@ function EmbedStyles() {
       @keyframes btlc-blink { 0%,80%,100% { opacity: .3; } 40% { opacity: 1; } }
 
       .btlc-composer { display: flex; gap: 8px; padding: 10px; border-top: 1px solid #24242b; align-items: flex-end; }
-      .btlc-attach { flex: 0 0 auto; display: inline-flex; align-items: center; justify-content: center; width: 30px; height: 30px; border-radius: 8px; cursor: pointer; opacity: .8; }
+      .btlc-attach { flex: 0 0 auto; display: inline-flex; align-items: center; justify-content: center; width: 30px; height: 30px; border: 0; background: transparent; padding: 0; border-radius: 8px; cursor: pointer; opacity: .8; }
       .btlc-attach:hover { opacity: 1; background: rgba(255,255,255,.06); }
       .btlc-attach img { width: 16px; height: 16px; display: block; }
       .btlc-shotchip { display: flex; align-items: center; gap: 8px; margin: 0 10px; padding: 6px 8px; background: rgba(255,255,255,.05); border: 1px solid #24242b; border-radius: 8px; font-size: 12px; color: #a9a9b2; }
