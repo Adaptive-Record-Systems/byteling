@@ -138,6 +138,35 @@ function formatReadResult(files: ReadFile[]): string {
   }).join('\n\n');
 }
 
+/** Default branch for a repo, cached. Lets Byte read any connected repo. */
+async function resolveDefaultBranch(token: string, fullName: string, cache: Map<string, string>): Promise<string | null> {
+  const hit = cache.get(fullName);
+  if (hit) return hit;
+  const [owner, repo] = fullName.split('/');
+  if (!owner || !repo) return null;
+  const res = await fetch(`https://api.github.com/repos/${owner}/${repo}`, { headers: ghHeaders(token) });
+  if (!res.ok) return null;
+  const ref = ((await res.json()) as { default_branch?: string }).default_branch || 'main';
+  cache.set(fullName, ref);
+  return ref;
+}
+
+/** Recursive file-path tree for any repo (blobs only), as newline text. */
+async function fetchRepoTreeText(token: string, fullName: string, ref: string): Promise<string | null> {
+  const [owner, repo] = fullName.split('/');
+  const res = await fetch(
+    `https://api.github.com/repos/${owner}/${repo}/git/trees/${encodeURIComponent(ref)}?recursive=1`,
+    { headers: ghHeaders(token) }
+  );
+  if (!res.ok) return null;
+  const data = (await res.json()) as { tree?: Array<Record<string, unknown>> };
+  const paths = (Array.isArray(data.tree) ? data.tree : [])
+    .filter((e) => e.type === 'blob')
+    .map((e) => e.path as string);
+  const LIMIT = 1500;
+  return paths.slice(0, LIMIT).join('\n') + (paths.length > LIMIT ? `\n… (${paths.length - LIMIT} more)` : '');
+}
+
 Deno.serve(async (req) => {
   try {
     const base44 = createClientFromRequest(req);
@@ -257,7 +286,18 @@ Deno.serve(async (req) => {
     // so "open my Nexus app" resolves to an exact repo and signals the frontend.
     let system = SYSTEM_PROMPT;
     const tools = [];
-    let githubToken: string | null = null; // resolved when a repo is open, for read_files
+    let githubToken: string | null = null;
+    const refCache = new Map<string, string>(); // repo → default branch, for read_repo
+    // Resolve the caller's own GitHub token up front — not only when a repo is
+    // "open" — so Byte can READ any connected repo, scoped by owner_email under
+    // the service role (never another user's token).
+    {
+      const conns = await base44.asServiceRole.entities.GitHubConnection.filter({
+        owner_email: user.email,
+        status: 'active'
+      });
+      githubToken = conns?.[0]?.access_token ?? null;
+    }
 
     if (repos.length) {
       const list = repos
@@ -272,6 +312,24 @@ Deno.serve(async (req) => {
           type: 'object',
           properties: {
             repo_full_name: { type: 'string', description: 'Exact owner/repo from the list' }
+          },
+          required: ['repo_full_name'],
+          additionalProperties: false
+        }
+      });
+    }
+
+    if (githubToken && repos.length) {
+      system += `\n\nReading ANY repo — you do NOT need to "open" one first. Use the read_repo tool: call it with just repo_full_name to get that repo's file tree, then call it again with exact paths to read files. Read freely across all of the user's connected repos to answer questions about their code. (open_repo is only for setting your WRITE target — the repo a pull request would go to; reading never needs it.)`;
+      tools.push({
+        name: 'read_repo',
+        description:
+          "Read a connected repo WITHOUT opening it. repo_full_name must be an exact full_name from the list. Omit paths to get its file tree; include exact paths (from that tree) to read file contents.",
+        input_schema: {
+          type: 'object',
+          properties: {
+            repo_full_name: { type: 'string', description: 'Exact owner/repo from the list' },
+            paths: { type: 'array', items: { type: 'string' }, description: 'Exact file paths to read; omit to get the tree' }
           },
           required: ['repo_full_name'],
           additionalProperties: false
@@ -298,14 +356,6 @@ Deno.serve(async (req) => {
     }
 
     if (repoFullName) {
-      // Resolve the caller's own GitHub token so Byteling can read files itself
-      // (scoped by owner_email under the service role — never another user's).
-      const conns = await base44.asServiceRole.entities.GitHubConnection.filter({
-        owner_email: user.email,
-        status: 'active'
-      });
-      githubToken = conns?.[0]?.access_token ?? null;
-
       if (githubToken) {
         system += `\n\nDeep dive: you can read the full contents of any file in the open repo yourself with the read_files tool (exact paths from the file tree, up to ${MAX_READ_FILES} per call). Investigate before answering — pull the files you actually need instead of asking the user to paste them or guessing at contents. Read a handful at a time, follow the imports, and stop once you have enough to answer. If a read fails (too large, binary, or missing), say so plainly. CRUCIAL: when you need a file, call read_files THIS turn and give your answer only once its contents come back — NEVER end a turn with "let me look", "reading now", or "give me a moment" as your whole reply; that leaves the user waiting on a read that never happens. Read, then answer, in the same turn.`;
         tools.push({
@@ -358,7 +408,7 @@ Deno.serve(async (req) => {
         }
       });
     } else {
-      system += `\n\nRIGHT NOW no repository is open — you have no file tree and cannot read any files. Do NOT say you are reading, about to read, "let me look", or "give me a moment"; there is nothing for you to look at. If they want you to look at their code, ${repos.length ? "open one yourself with open_repo (an exact full_name from the list above), or ask which repo they mean" : "tell them to open a repo first with the \"pick a repo\" control at the top"}. Be honest about this instead of narrating a read you cannot do.`;
+      system += `\n\nNo repo is set as your WRITE target right now — but you can still READ. ${repos.length && githubToken ? "To answer anything about their code, read the relevant repo with read_repo (call it with just the repo to get the tree, then with paths for files). Do NOT say you can't read or that they must open one first — just read it. Never narrate a read (\"let me look\", \"reading now\") without actually calling read_repo this turn." : "You have no connected repos to read yet — if they want code help, they'll need to connect GitHub / pick a repo first."} Only ask them to pick/open a repo when it's about WRITING (opening a pull request).`;
     }
 
     // Anti-repeat: hand back the last reply's opening so Byteling doesn't fall
@@ -389,7 +439,9 @@ Deno.serve(async (req) => {
     for (let iter = 0; iter < MAX_TOOL_ITERS; iter++) {
       // On the last round, drop read_files so Byteling is forced to answer with
       // what it has rather than asking for more files it can't get.
-      const offerTools = iter < MAX_TOOL_ITERS - 1 ? tools : tools.filter((t) => t.name !== 'read_files');
+      const offerTools = iter < MAX_TOOL_ITERS - 1
+        ? tools
+        : tools.filter((t) => t.name !== 'read_files' && t.name !== 'read_repo');
       try {
         final = await anthropic.messages.stream({
           model: MODEL,
@@ -414,31 +466,70 @@ Deno.serve(async (req) => {
         throw e;
       }
 
-      const readCalls = final.content.filter(
+      const readFileCalls = final.content.filter(
         (b): b is Anthropic.ToolUseBlock => b.type === 'tool_use' && b.name === 'read_files'
       );
-      if (!readCalls.length) break; // answered, or used a terminal tool (open_repo/propose_pr)
+      const readRepoCalls = final.content.filter(
+        (b): b is Anthropic.ToolUseBlock => b.type === 'tool_use' && b.name === 'read_repo'
+      );
+      if (!readFileCalls.length && !readRepoCalls.length) break; // answered, or a terminal tool
 
       // Preserve the full assistant turn (thinking + tool_use blocks are required
-      // to continue), then answer each read_files call with the file contents.
+      // to continue), then answer each read call with the requested content.
       anthropicMessages.push({
         role: 'assistant',
         content: final.content as unknown as Anthropic.ContentBlockParam[]
       });
-      const ref = await resolveRef();
-      const [owner, repo] = repoFullName!.split('/');
       const toolResults: Anthropic.ToolResultBlockParam[] = [];
-      for (const call of readCalls) {
-        const raw = (call.input as { paths?: unknown })?.paths;
-        const paths = Array.isArray(raw)
-          ? raw.filter((p): p is string => typeof p === 'string' && !!p).slice(0, MAX_READ_FILES)
-          : [];
+
+      // read_files — the currently open repo
+      if (readFileCalls.length) {
+        const ref = await resolveRef();
+        const [owner, repo] = (repoFullName ?? '/').split('/');
+        for (const call of readFileCalls) {
+          const raw = (call.input as { paths?: unknown })?.paths;
+          const paths = Array.isArray(raw)
+            ? raw.filter((p): p is string => typeof p === 'string' && !!p).slice(0, MAX_READ_FILES)
+            : [];
+          let content: string;
+          if (!repoFullName) content = 'No repository is open; use read_repo with a repo_full_name instead.';
+          else if (!paths.length) content = 'No valid file paths were provided.';
+          else if (!ref || !githubToken) content = 'Could not access the repository to read files.';
+          else content = formatReadResult(await readRepoFiles(githubToken, owner, repo, ref, paths));
+          toolResults.push({ type: 'tool_result', tool_use_id: call.id, content });
+        }
+      }
+
+      // read_repo — any connected repo, without opening it
+      for (const call of readRepoCalls) {
+        const inp = call.input as { repo_full_name?: unknown; paths?: unknown };
+        const rf = typeof inp.repo_full_name === 'string' ? inp.repo_full_name : '';
         let content: string;
-        if (!paths.length) content = 'No valid file paths were provided.';
-        else if (!ref || !githubToken) content = 'Could not access the repository to read files.';
-        else content = formatReadResult(await readRepoFiles(githubToken, owner, repo, ref, paths));
+        if (!rf || !repos.some((r) => r.full_name === rf)) {
+          content = `"${rf}" is not one of the repositories you can access.`;
+        } else if (!githubToken) {
+          content = 'No active GitHub connection to read from.';
+        } else {
+          const ref = await resolveDefaultBranch(githubToken, rf, refCache);
+          if (!ref) {
+            content = `Could not resolve ${rf} (repo not found or no access).`;
+          } else {
+            const rawPaths = inp.paths;
+            const paths = Array.isArray(rawPaths)
+              ? rawPaths.filter((p): p is string => typeof p === 'string' && !!p).slice(0, MAX_READ_FILES)
+              : [];
+            if (!paths.length) {
+              const tree = await fetchRepoTreeText(githubToken, rf, ref);
+              content = tree ? `Repository: ${rf}\nFile tree:\n${tree}` : `Could not read the tree for ${rf}.`;
+            } else {
+              const [o, r] = rf.split('/');
+              content = `Repository: ${rf}\n\n` + formatReadResult(await readRepoFiles(githubToken, o, r, ref, paths));
+            }
+          }
+        }
         toolResults.push({ type: 'tool_result', tool_use_id: call.id, content });
       }
+
       anthropicMessages.push({ role: 'user', content: toolResults });
     }
 
