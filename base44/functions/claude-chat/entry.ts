@@ -412,6 +412,7 @@ Deno.serve(async (req) => {
       }
 
       system += `\n\nOpening a pull request: if the user asks you to change or fix something and open a PR, you MUST call the propose_pr tool this turn — describing the change in words does not make it happen, only propose_pr does. Say one short line about the fix, then call propose_pr with the COMPLETE new content of each changed file (a full file, never a diff). Change only what the fix needs. If you don't have the current contents of a file you'd need to change, read it with read_files first — never call propose_pr with guessed content. Never claim a PR is open — propose_pr hands the change to the user to confirm and open.`;
+      system += `\n\nRead broad, write narrow: you may read across many repos, but a PR is always written to ONE. The repo currently open as your write target is ${repoFullName}. Set propose_pr's repo_full_name to the repo the changed files actually came from — usually the open one, but if the fix is for a DIFFERENT repo you read with read_repo, name THAT repo (exact full_name from the list) so the PR doesn't land on the wrong project. Never propose changes for one repo while pointing the PR at another. The user sees and confirms the target repo before the PR opens.`;
       tools.push({
         name: 'propose_pr',
         description:
@@ -421,6 +422,11 @@ Deno.serve(async (req) => {
           properties: {
             title: { type: 'string', description: 'Short PR title' },
             body: { type: 'string', description: 'What changed and why' },
+            repo_full_name: {
+              type: 'string',
+              description:
+                'The repo this PR targets — exact owner/repo the changed files came from (may differ from the open repo if you read another with read_repo). Omit only if it is the open repo.'
+            },
             changes: {
               type: 'array',
               description: 'Each changed file with its complete new content',
@@ -583,7 +589,9 @@ Deno.serve(async (req) => {
     // returned for the user to confirm — this function never opens the PR.
     let openRepo: string | undefined;
     let pointAt: string | undefined;
-    let prProposal: { title: string; body: string; changes: { path: string; content: string }[] } | undefined;
+    let prProposal:
+      | { title: string; body: string; repo_full_name?: string; changes: { path: string; content: string }[] }
+      | undefined;
     for (const block of final.content) {
       if (block.type !== 'tool_use') continue;
       if (block.name === 'open_repo') {
@@ -597,16 +605,26 @@ Deno.serve(async (req) => {
           pointAt = target;
         }
       } else if (block.name === 'propose_pr') {
-        const inp = block.input as { title?: unknown; body?: unknown; changes?: unknown };
+        const inp = block.input as { title?: unknown; body?: unknown; repo_full_name?: unknown; changes?: unknown };
         const changes = Array.isArray(inp.changes)
           ? inp.changes.filter(
               (c) => c && typeof (c as { path?: unknown }).path === 'string' && typeof (c as { content?: unknown }).content === 'string'
             )
           : [];
+        // Write narrow: only accept a target repo the caller actually offered
+        // (validated against the repos list or the open write target); an
+        // unknown value is dropped so the frontend falls back to the open repo
+        // rather than opening a PR against an arbitrary name.
+        const rawTarget = typeof inp.repo_full_name === 'string' ? inp.repo_full_name : '';
+        const target =
+          rawTarget && (rawTarget === repoFullName || repos.some((r) => r.full_name === rawTarget))
+            ? rawTarget
+            : repoFullName ?? undefined;
         if (typeof inp.title === 'string' && inp.title.trim() && changes.length) {
           prProposal = {
             title: inp.title.trim(),
             body: typeof inp.body === 'string' ? inp.body : '',
+            ...(target ? { repo_full_name: target } : {}),
             changes: changes as { path: string; content: string }[]
           };
         }
