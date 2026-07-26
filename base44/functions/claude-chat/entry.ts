@@ -224,6 +224,7 @@ Deno.serve(async (req) => {
       return Response.json({ error: 'message is required' }, { status: 400 });
     }
 
+    const userName = typeof body.user_name === 'string' ? body.user_name.trim().slice(0, 40) : '';
     const sessionId = typeof body.session_id === 'string' ? body.session_id : null;
     let repoFullName = typeof body.repo_full_name === 'string' ? body.repo_full_name : null;
 
@@ -310,6 +311,9 @@ Deno.serve(async (req) => {
     // Give Byteling the openable-repo list and a tool to switch the workspace,
     // so "open my Nexus app" resolves to an exact repo and signals the frontend.
     let system = SYSTEM_PROMPT;
+    if (userName) {
+      system += `\n\nThe user's name is ${userName} — they told you, so use it naturally and warmly. Do not ask their name again, and never call them by a username or email handle.`;
+    }
     if (image) {
       system += `\n\nThe user attached a screenshot — respond to what you actually SEE in it (layout, spacing, alignment, contrast, overflow, visible bugs), not the DOM or a guess. Lead with what matters; don't narrate the whole image back. If it's a UI/UX issue and you can reach the repo that renders it, connect what you see to the code (read_repo) and offer a concrete fix or a PR.`;
     }

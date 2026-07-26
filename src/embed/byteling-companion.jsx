@@ -63,13 +63,27 @@ function readName() {
   if (IS_EXTENSION) return '';
   try { return localStorage.getItem(NAME_KEY) || ''; } catch { return ''; }
 }
-function persistName(n) {
+function persistName(n, pinned) {
   if (IS_EXTENSION) return;
-  try { localStorage.setItem(NAME_KEY, n); } catch { /* ignore */ }
+  try { localStorage.setItem(NAME_KEY, n); if (pinned) localStorage.setItem(NAME_KEY + '_pin', '1'); } catch { /* ignore */ }
+}
+function readNamePinned() {
+  if (IS_EXTENSION) return false;
+  try { return localStorage.getItem(NAME_KEY + '_pin') === '1'; } catch { return false; }
 }
 function forgetName() {
   if (IS_EXTENSION) return;
-  try { localStorage.removeItem(NAME_KEY); } catch { /* ignore */ }
+  try { localStorage.removeItem(NAME_KEY); localStorage.removeItem(NAME_KEY + '_pin'); } catch { /* ignore */ }
+}
+
+// If the user tells Byte their name in chat, remember THAT over the login name.
+function extractName(text) {
+  const m = (text || '').match(/\b(?:my name'?s?|my name is|i'?m|i am|call me|it'?s|name'?s)\s+([A-Za-z][A-Za-z'’-]{1,20})\b/i);
+  if (!m) return null;
+  const raw = m[1];
+  const STOP = new Set(['good', 'fine', 'working', 'here', 'back', 'okay', 'ok', 'done', 'trying', 'not', 'sorry', 'busy', 'looking', 'ready', 'sure', 'glad', 'happy', 'tired', 'confused', 'stuck', 'curious', 'interested', 'just', 'still', 'also', 'really', 'doing', 'going', 'gonna', 'about', 'the', 'so', 'now', 'great', 'well', 'right', 'thinking', 'wondering', 'hoping']);
+  if (STOP.has(raw.toLowerCase())) return null;
+  return raw.charAt(0).toUpperCase() + raw.slice(1);
 }
 
 // Ambient check-in lines — Byte opens up on his own when it's been quiet a
@@ -211,6 +225,7 @@ function EmbedApp({ hue, dockSize: initialDockSize }) {
   const flyRef = useRef(null);   // FlyingFlame handle: flyRef.current.flyTo(hostEl)
   const lastActivityRef = useRef(Date.now()); // for the ambient check-in timer
   const nudgedRef = useRef(false);
+  const namePinnedRef = useRef(readNamePinned()); // true once the user states their name
   const lastClickRef = useRef(null); // { el, label, at, commented } — for the ambient poke
 
   const fire = (kind) => setPulse({ id: ++idRef.current, kind });
@@ -231,8 +246,10 @@ function EmbedApp({ hue, dockSize: initialDockSize }) {
         setToken(e.data.token);
         persistToken(e.data.token);
         if (typeof e.data.name === 'string' && e.data.name) {
-          setName(e.data.name);
-          persistName(e.data.name);
+          if (!namePinnedRef.current) { // a name the user stated wins over the login name
+            setName(e.data.name);
+            persistName(e.data.name, false);
+          }
         }
         bump();
       }
@@ -448,6 +465,11 @@ function EmbedApp({ hue, dockSize: initialDockSize }) {
     if (!token) { signIn(); return; }
     bump();
 
+    // If they tell Byte their name, remember it (over the login name) and pin it.
+    const stated = extractName(text);
+    if (stated) { setName(stated); namePinnedRef.current = true; persistName(stated, true); }
+    const effectiveName = stated || name;
+
     // The embed keeps its own thread and replays it as history (no session_id).
     const history = messages.filter((m) => !m.error).map((m) => ({ role: m.role, text: m.text }));
     const shot = image; // the attached screenshot, sent once with this turn
@@ -480,7 +502,8 @@ function EmbedApp({ hue, dockSize: initialDockSize }) {
         // ("look at my emberweave repo") instead of only via the picker.
         repos: (repos || []).map((r) => ({ full_name: r.full_name, description: r.description })),
         ui_elements: uiElements,
-        image: shot // a screenshot for Byte to actually see
+        image: shot, // a screenshot for Byte to actually see
+        user_name: effectiveName || undefined // so he greets/refers by their real name
       }, token);
       setSending(false);
       fire('spark');
@@ -566,7 +589,7 @@ function EmbedApp({ hue, dockSize: initialDockSize }) {
             <div className="btlc-aside">
               <FlameMark hue={hue ?? 42} />
               {token
-                ? ` Welcome back${name ? ', ' + name : ''}. Ask me anything — I read code, spot fixes, and open PRs.`
+                ? ` Welcome back${name ? ', ' + name : ''}. Good to see you — what's on your mind? (I can dig into your code whenever you want.)`
                 : ' Sign in with your Byte-ling account to chat with your own Anthropic key.'}
             </div>
           )}
