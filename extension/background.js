@@ -31,3 +31,15 @@ chrome.action.onClicked.addListener(async (tab) => {
     console.warn('Byte-ling: cannot run on this page —', e && e.message);
   }
 });
+
+// One-click screen capture for the companion. captureVisibleTab must run in the
+// background worker; it uses the activeTab grant from the toolbar click, so
+// there's no getDisplayMedia picker (which a host page's CSP/policy can block).
+// It grabs the visible area of the active tab as a JPEG data URL.
+chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
+  if (msg?.type !== 'byteling-capture-tab') return;
+  chrome.tabs.captureVisibleTab({ format: 'jpeg', quality: 85 })
+    .then((dataUrl) => sendResponse({ ok: true, dataUrl }))
+    .catch((e) => sendResponse({ ok: false, error: (e && e.message) || 'capture failed' }));
+  return true; // keep the message channel open for the async response
+});
