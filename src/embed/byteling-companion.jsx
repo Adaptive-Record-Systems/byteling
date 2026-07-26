@@ -410,10 +410,13 @@ function EmbedApp({ hue, dockSize: initialDockSize }) {
   const patch = (idx, p) => setMessages((m) => m.map((x, i) => (i === idx ? { ...x, ...p } : x)));
 
   const confirmPr = async (idx, proposal) => {
-    if (!repo) return;
+    // Write narrow: open the PR against the target Byte named (or the user's
+    // override on the card), not just whatever repo is open.
+    const target = messages[idx]?.writeRepo || proposal?.repo_full_name || repo?.full_name;
+    if (!target) return;
     patch(idx, { prPending: true });
     try {
-      const d = await callFn('github-pr', { repo_full_name: repo.full_name, ...proposal }, token);
+      const d = await callFn('github-pr', { repo_full_name: target, ...proposal }, token);
       patch(idx, { prPending: false, prResult: d, proposal: null });
       fire('spark');
     } catch (e) {
@@ -611,21 +614,44 @@ function EmbedApp({ hue, dockSize: initialDockSize }) {
                       Opened PR #{m.prResult.number} ↗
                     </a>
                   )}
-                  {m.proposal && !m.prResult && (
+                  {m.proposal && !m.prResult && (() => {
+                    // Write narrow: name the target repo and let the user pick it
+                    // before the PR opens. Default = the repo Byte read the change
+                    // from (or the open repo); flag a cross-repo write.
+                    const repoList = repos || [];
+                    const target = m.writeRepo || m.proposal.repo_full_name || repo?.full_name || '';
+                    const crossRepo = target && repo?.full_name && target !== repo.full_name;
+                    return (
                     <div className="btlc-prcard">
                       <div className="btlc-prtitle">{m.proposal.title}</div>
                       <div className="btlc-prfiles">
                         {m.proposal.changes.length} file{m.proposal.changes.length > 1 ? 's' : ''}: {m.proposal.changes.map((c) => c.path).join(', ')}
                       </div>
+                      <div className="btlc-prtarget">
+                        <span>Opens a PR in</span>
+                        {repoList.length > 1 ? (
+                          <select value={target} onChange={(e) => patch(i, { writeRepo: e.target.value })}>
+                            {repoList.map((r) => (
+                              <option key={r.full_name} value={r.full_name}>{r.full_name}</option>
+                            ))}
+                          </select>
+                        ) : (
+                          <strong>{target || '—'}</strong>
+                        )}
+                      </div>
+                      {crossRepo && (
+                        <div className="btlc-prwarn">Different repo than the one open ({repo.full_name}).</div>
+                      )}
                       {m.prError && <div className="btlc-prerr">{m.prError}</div>}
                       <div className="btlc-prbtns">
-                        <button className="btlc-prbtn" disabled={m.prPending} onClick={() => confirmPr(i, m.proposal)}>
+                        <button className="btlc-prbtn" disabled={m.prPending || !target} onClick={() => confirmPr(i, m.proposal)}>
                           {m.prPending ? 'Opening…' : 'Open PR'}
                         </button>
                         <button className="btlc-prghost" onClick={() => patch(i, { proposal: null })}>Dismiss</button>
                       </div>
                     </div>
-                  )}
+                    );
+                  })()}
                 </div>
               </div>
             )
@@ -778,6 +804,10 @@ function EmbedStyles() {
       .btlc-prcard { border: 1px solid #3a3a44; background: rgba(255,255,255,.03); border-radius: 12px; padding: 10px; }
       .btlc-prtitle { font-size: 12.5px; font-weight: 600; color: #e9e9ee; }
       .btlc-prfiles { font-size: 11px; color: #9a9aa4; margin-top: 2px; word-break: break-all; }
+      .btlc-prtarget { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; font-size: 11px; color: #9a9aa4; margin-top: 7px; }
+      .btlc-prtarget strong { color: #e9e9ee; font-weight: 600; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+      .btlc-prtarget select { max-width: 60%; font: inherit; font-size: 11px; color: #e9e9ee; background: rgba(255,255,255,.04); border: 1px solid #3a3a44; border-radius: 6px; padding: 2px 4px; }
+      .btlc-prwarn { font-size: 11px; color: #f0b45a; margin-top: 5px; }
       .btlc-prerr { font-size: 11px; color: #ffb4b4; margin-top: 6px; }
       .btlc-prbtns { display: flex; gap: 6px; margin-top: 8px; }
       .btlc-prbtn { border: 0; cursor: pointer; font: inherit; font-size: 12px; font-weight: 700; background: #e9e9ee; color: #17171b; padding: 5px 12px; border-radius: 8px; }
@@ -878,6 +908,9 @@ function EmbedStyles() {
         .btlc-repo { background: rgba(0,0,0,.05); color: #555; }
         .btlc-prcard { border-color: #e6e6ea; background: #fafafb; }
         .btlc-prtitle { color: #17171b; }
+        .btlc-prtarget strong { color: #17171b; }
+        .btlc-prtarget select { color: #17171b; background: #fff; border-color: #d4d4dc; }
+        .btlc-prwarn { color: #b7791f; }
       }
       @media (max-width: 420px) {
         .btlc-root { right: 12px; bottom: 12px; }

@@ -182,10 +182,13 @@ export default function Chat() {
 
   const confirmPr = async (idx) => {
     const m = messages[idx];
-    if (!m?.proposal || !repo) return;
+    // Write narrow: the PR opens against the target Byte named (or the user's
+    // override), NOT just whatever repo happens to be open. See the proposal card.
+    const target = m?.writeRepo || m?.proposal?.repo_full_name || repo?.full_name;
+    if (!m?.proposal || !target) return;
     patchMessage(idx, { prPending: true, prError: null });
     try {
-      const res = await openPr({ repoFullName: repo.full_name, ...m.proposal });
+      const res = await openPr({ repoFullName: target, ...m.proposal });
       patchMessage(idx, { prResult: res, prPending: false, proposal: null });
       firePulse('spark'); // a PR landed — bright celebratory flare
     } catch (e) {
@@ -462,7 +465,13 @@ export default function Chat() {
                     </a>
                   )}
 
-                  {m.proposal && !m.prResult && (
+                  {m.proposal && !m.prResult && (() => {
+                    // Write narrow: show exactly which repo this PR lands on, and
+                    // let the user pick it before opening. Default = the repo Byte
+                    // read the change from (or the open repo). Flag a cross-repo write.
+                    const target = m.writeRepo || m.proposal.repo_full_name || repo?.full_name || '';
+                    const crossRepo = target && repo?.full_name && target !== repo.full_name;
+                    return (
                     <div className="rounded-lg border border-primary/20 bg-background/40 p-3">
                       <div className="flex items-center gap-2 text-sm font-medium">
                         <GitPullRequest className="w-4 h-4 text-primary" />
@@ -471,9 +480,30 @@ export default function Chat() {
                       <div className="text-xs text-muted-foreground mt-1 font-mono">
                         {m.proposal.changes.length} file{m.proposal.changes.length > 1 ? 's' : ''}: {m.proposal.changes.map((c) => c.path).join(', ')}
                       </div>
+                      <div className="mt-2 flex items-center gap-2 text-xs">
+                        <span className="text-muted-foreground shrink-0">Opens a PR in</span>
+                        {repos.length > 1 ? (
+                          <select
+                            value={target}
+                            onChange={(e) => patchMessage(i, { writeRepo: e.target.value })}
+                            className="max-w-[60%] rounded border border-input bg-background px-1.5 py-0.5 font-mono text-foreground"
+                          >
+                            {repos.map((r) => (
+                              <option key={r.full_name} value={r.full_name}>{r.full_name}</option>
+                            ))}
+                          </select>
+                        ) : (
+                          <span className="font-mono font-medium text-foreground">{target || '—'}</span>
+                        )}
+                      </div>
+                      {crossRepo && (
+                        <p className="text-xs text-amber-600 dark:text-amber-500 mt-1.5">
+                          Heads up — that's a different repo than the one you have open ({repo.full_name}).
+                        </p>
+                      )}
                       {m.prError && <p className="text-xs text-destructive mt-2">{m.prError}</p>}
                       <div className="flex gap-2 mt-3">
-                        <Button size="sm" onClick={() => confirmPr(i)} disabled={m.prPending}>
+                        <Button size="sm" onClick={() => confirmPr(i)} disabled={m.prPending || !target}>
                           {m.prPending ? (
                             <Loader2 className="w-4 h-4 animate-spin" />
                           ) : (
@@ -487,7 +517,8 @@ export default function Chat() {
                         </Button>
                       </div>
                     </div>
-                  )}
+                    );
+                  })()}
                 </div>
               </div>
             )
