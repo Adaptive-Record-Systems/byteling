@@ -14,12 +14,15 @@ import {
   GitPullRequest, ExternalLink, Puzzle, LogOut, Paperclip, Monitor
 } from 'lucide-react';
 import { useAuth } from '@/lib/AuthContext';
+import { extractName, firstNameFrom } from '@/lib/name';
 import { Lantern, FlameMark, hueFromRepo } from '@/components/Lantern';
 import { FlyingFlame } from '@/components/FlyingFlame';
 import flameVideo from '@/assets/lantern/Flame_idle.mp4';
 import cometVideo from '@/assets/lantern/flame-comet.mp4';
 
 const LAST_REPO_KEY = 'byteling_last_repo';
+const NAME_KEY = 'byteling_app_name';       // name the user stated in chat (first-party, persisted)
+const NAME_PIN_KEY = 'byteling_app_name_pin';
 const MAX_TREE_LINES = 1200;
 
 // Read an image File/Blob into a data URL for the vision call.
@@ -63,7 +66,18 @@ function ByteAvatar({ hue = 42 }) {
 }
 
 export default function Chat() {
-  const { logout } = useAuth(); // Sign out → clears the token (localStorage) + server cookie
+  const { logout, user } = useAuth(); // Sign out → clears the token (localStorage) + server cookie
+
+  // Name memory: prefer the name the user states in chat over their login handle
+  // (never greet by "cfair1911"). First-party app → localStorage is fine to persist.
+  const [userName, setUserName] = useState(() => {
+    try { return localStorage.getItem(NAME_KEY) || ''; } catch { return ''; }
+  });
+  const namePinnedRef = useRef((() => {
+    try { return localStorage.getItem(NAME_PIN_KEY) === '1'; } catch { return false; }
+  })());
+  const loginName = firstNameFrom(user?.full_name);
+  const effectiveName = userName || loginName;
   const [connection, setConnection] = useState(null);
   const [repos, setRepos] = useState([]);
   const [repo, setRepo] = useState(null);
@@ -265,6 +279,16 @@ export default function Chat() {
     const text = input.trim();
     if ((!text && !image) || sending) return;
     setChatError(null);
+
+    // If they tell Byte their name, remember it (over the login name) and pin it.
+    const stated = extractName(text);
+    if (stated) {
+      setUserName(stated);
+      namePinnedRef.current = true;
+      try { localStorage.setItem(NAME_KEY, stated); localStorage.setItem(NAME_PIN_KEY, '1'); } catch { /* ignore */ }
+    }
+    const nameForTurn = stated || userName || loginName;
+
     const shot = image; // the attached screenshot, sent once with this turn
     setInput('');
     setImage(null);
@@ -289,7 +313,8 @@ export default function Chat() {
         context: buildContext(),
         repos: repoList.map((r) => ({ full_name: r.full_name, description: r.description })),
         uiElements: collectUiElements(),
-        image: shot // a screenshot for Byte to actually see
+        image: shot, // a screenshot for Byte to actually see
+        userName: nameForTurn // greet/refer by their real name, not the login handle
       });
       if (res.reply || res.pr_proposal) {
         setMessages((prev) => [...prev, { role: 'assistant', text: res.reply || '', proposal: res.pr_proposal || null }]);
@@ -426,7 +451,10 @@ export default function Chat() {
         {/* Thread */}
         <div ref={scrollRef} className="flex-1 min-h-0 overflow-y-auto space-y-4 pr-1 flex flex-col">
           {messages.length === 0 && !repo && (
-            <Aside>There you are. Tell me which repo to open — or just describe it, like &ldquo;check out my Nexus app.&rdquo;</Aside>
+            <Aside>
+              {effectiveName ? `There you are, ${effectiveName}. ` : 'There you are. '}
+              Tell me which repo to open — or just describe it, like &ldquo;check out my Nexus app.&rdquo;
+            </Aside>
           )}
           {messages.length === 0 && repo && (
             <Aside>Got {repo.full_name} open. Ask me anything about it.</Aside>

@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { Lantern, FlameMark } from '@/components/Lantern';
 import { FlyingFlame } from '@/components/FlyingFlame';
+import { extractName } from '@/lib/name';
 
 // The <script> tag that loaded this bundle — captured at load so auto-mount can
 // read its data-* config (data-hue / data-size) even after DOM ready.
@@ -44,6 +45,12 @@ const DOCK_MAX = 240;
 // impersonate you). In the extension the token lives in isolated-world memory
 // only; on the web embed (your own site) localStorage persistence is fine.
 const IS_EXTENSION = typeof chrome !== 'undefined' && !!chrome?.runtime?.id;
+// In the extension the NAME (not a secret) can still be remembered across reloads
+// via chrome.storage.local — that's the EXTENSION's own storage, not the host
+// page's, so it's safe even though the token stays memory-only.
+const EXT_NAME_KEY = 'byteling_ext_name';
+const EXT_NAME_PIN_KEY = 'byteling_ext_name_pin';
+const hasExtStorage = IS_EXTENSION && typeof chrome !== 'undefined' && !!chrome?.storage?.local;
 
 function readToken() {
   if (IS_EXTENSION) return null; // never rehydrate a token from host-page storage
@@ -59,31 +66,33 @@ function forgetToken() {
 }
 // The name isn't a secret, but mirror the token's storage rule so we don't drop
 // the user's name into an untrusted host page's storage in the extension.
+// readName is the SYNC initial value. In the extension it starts empty and the
+// real value is hydrated async from chrome.storage.local (see the mount effect).
 function readName() {
   if (IS_EXTENSION) return '';
   try { return localStorage.getItem(NAME_KEY) || ''; } catch { return ''; }
 }
 function persistName(n, pinned) {
-  if (IS_EXTENSION) return;
+  if (IS_EXTENSION) {
+    // chrome.storage.local = the extension's own storage (not the host page's),
+    // so remembering the non-secret name here is safe and survives reload.
+    if (hasExtStorage) {
+      try { chrome.storage.local.set({ [EXT_NAME_KEY]: n, ...(pinned ? { [EXT_NAME_PIN_KEY]: true } : {}) }); } catch { /* ignore */ }
+    }
+    return;
+  }
   try { localStorage.setItem(NAME_KEY, n); if (pinned) localStorage.setItem(NAME_KEY + '_pin', '1'); } catch { /* ignore */ }
 }
 function readNamePinned() {
-  if (IS_EXTENSION) return false;
+  if (IS_EXTENSION) return false; // hydrated async alongside the name
   try { return localStorage.getItem(NAME_KEY + '_pin') === '1'; } catch { return false; }
 }
 function forgetName() {
-  if (IS_EXTENSION) return;
+  if (IS_EXTENSION) {
+    if (hasExtStorage) { try { chrome.storage.local.remove([EXT_NAME_KEY, EXT_NAME_PIN_KEY]); } catch { /* ignore */ } }
+    return;
+  }
   try { localStorage.removeItem(NAME_KEY); localStorage.removeItem(NAME_KEY + '_pin'); } catch { /* ignore */ }
-}
-
-// If the user tells Byte their name in chat, remember THAT over the login name.
-function extractName(text) {
-  const m = (text || '').match(/\b(?:my name'?s?|my name is|i'?m|i am|call me|it'?s|name'?s)\s+([A-Za-z][A-Za-z'’-]{1,20})\b/i);
-  if (!m) return null;
-  const raw = m[1];
-  const STOP = new Set(['good', 'fine', 'working', 'here', 'back', 'okay', 'ok', 'done', 'trying', 'not', 'sorry', 'busy', 'looking', 'ready', 'sure', 'glad', 'happy', 'tired', 'confused', 'stuck', 'curious', 'interested', 'just', 'still', 'also', 'really', 'doing', 'going', 'gonna', 'about', 'the', 'so', 'now', 'great', 'well', 'right', 'thinking', 'wondering', 'hoping']);
-  if (STOP.has(raw.toLowerCase())) return null;
-  return raw.charAt(0).toUpperCase() + raw.slice(1);
 }
 
 // Ambient check-in lines — Byte opens up on his own when it's been quiet a
@@ -227,6 +236,20 @@ function EmbedApp({ hue, dockSize: initialDockSize }) {
   const nudgedRef = useRef(false);
   const namePinnedRef = useRef(readNamePinned()); // true once the user states their name
   const lastClickRef = useRef(null); // { el, label, at, commented } — for the ambient poke
+
+  // Extension: hydrate the remembered name from chrome.storage.local (async; the
+  // extension's own storage, so it survives reload even though the token doesn't).
+  useEffect(() => {
+    if (!hasExtStorage) return;
+    try {
+      chrome.storage.local.get([EXT_NAME_KEY, EXT_NAME_PIN_KEY], (r) => {
+        if (r && typeof r[EXT_NAME_KEY] === 'string' && r[EXT_NAME_KEY]) {
+          setName(r[EXT_NAME_KEY]);
+          if (r[EXT_NAME_PIN_KEY]) namePinnedRef.current = true;
+        }
+      });
+    } catch { /* ignore */ }
+  }, []);
 
   const fire = (kind) => setPulse({ id: ++idRef.current, kind });
   // Reset the idle clock on any real interaction so Byte only checks in when
