@@ -114,6 +114,17 @@ function readSize(fallback) {
 }
 const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
 
+// Read an image File/Blob into a data URL for the vision call.
+function readImageFile(file) {
+  return new Promise((resolve) => {
+    if (!file || !/^image\//.test(file.type)) return resolve(null);
+    const reader = new FileReader();
+    reader.onload = () => resolve(typeof reader.result === 'string' ? reader.result : null);
+    reader.onerror = () => resolve(null);
+    reader.readAsDataURL(file);
+  });
+}
+
 // Cross-origin call to a Byteling backend function (CORS is open). Throws an
 // Error carrying { status, code } on non-2xx so callers can branch on auth /
 // no-key / no-connection.
@@ -184,6 +195,7 @@ function EmbedApp({ hue, dockSize: initialDockSize }) {
   const dragRef = useRef({ moved: false });
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState('');
+  const [image, setImage] = useState(null); // attached screenshot (data URL) for vision
   const [sending, setSending] = useState(false);
   const [pulse, setPulse] = useState(null);
   const [token, setToken] = useState(readToken);
@@ -394,14 +406,16 @@ function EmbedApp({ hue, dockSize: initialDockSize }) {
 
   const submit = async () => {
     const text = input.trim();
-    if (!text || sending) return;
+    if ((!text && !image) || sending) return;
     if (!token) { signIn(); return; }
     bump();
 
     // The embed keeps its own thread and replays it as history (no session_id).
     const history = messages.filter((m) => !m.error).map((m) => ({ role: m.role, text: m.text }));
+    const shot = image; // the attached screenshot, sent once with this turn
     setInput('');
-    setMessages((m) => [...m, { role: 'user', text }]);
+    setImage(null);
+    setMessages((m) => [...m, { role: 'user', text: text || 'What do you see here?', image: shot }]);
     setSending(true);
     fire('notice');
 
@@ -427,7 +441,8 @@ function EmbedApp({ hue, dockSize: initialDockSize }) {
         // Give Byte the openable-repo list so he can open one by name himself
         // ("look at my emberweave repo") instead of only via the picker.
         repos: (repos || []).map((r) => ({ full_name: r.full_name, description: r.description })),
-        ui_elements: uiElements
+        ui_elements: uiElements,
+        image: shot // a screenshot for Byte to actually see
       }, token);
       setSending(false);
       fire('spark');
@@ -456,7 +471,12 @@ function EmbedApp({ hue, dockSize: initialDockSize }) {
 
   return (
     <div ref={rootRef} className={`btlc-root ${unlocked ? 'btlc-unlocked' : ''}`} style={rootStyle}>
-      <div className={`btlc-panel ${open ? 'btlc-open' : ''}`} role="dialog" aria-label="Byte-ling">
+      <div className={`btlc-panel ${open ? 'btlc-open' : ''}`} role="dialog" aria-label="Byte-ling"
+        onDragOver={token ? (e) => { e.preventDefault(); } : undefined}
+        onDrop={token ? async (e) => {
+          const file = e.dataTransfer?.files?.[0];
+          if (file && /^image\//.test(file.type)) { e.preventDefault(); const url = await readImageFile(file); if (url) { setImage(url); if (!open) setOpen(true); } }
+        } : undefined}>
         <div className="btlc-head">
           <span className="btlc-head-title">
             <FlameMark hue={hue ?? 42} /> Byte-ling
@@ -515,7 +535,10 @@ function EmbedApp({ hue, dockSize: initialDockSize }) {
           {messages.map((m, i) =>
             m.role === 'user' ? (
               <div key={i} className="btlc-row btlc-right">
-                <div className="btlc-bubble btlc-user">{m.text}</div>
+                <div className="btlc-bubble btlc-user">
+                  {m.image && <img className="btlc-shot" src={m.image} alt="attached screenshot" />}
+                  {m.text}
+                </div>
               </div>
             ) : (
               <div key={i} className="btlc-row">
@@ -554,20 +577,36 @@ function EmbedApp({ hue, dockSize: initialDockSize }) {
           )}
         </div>
 
+        {token && image && (
+          <div className="btlc-shotchip">
+            <img src={image} alt="attached screenshot" />
+            <span>Screenshot attached</span>
+            <button onClick={() => setImage(null)} aria-label="Remove screenshot">×</button>
+          </div>
+        )}
         <div className="btlc-composer">
           {token ? (
             <>
+              <label className="btlc-attach" title="Attach a screenshot for Byte-ling to see">
+                <img alt="" src="data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%23888' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><path d='M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48'/></svg>" />
+                <input type="file" accept="image/*" style={{ display: 'none' }}
+                  onChange={async (e) => { const url = await readImageFile(e.target.files?.[0]); if (url) setImage(url); e.target.value = ''; }} />
+              </label>
               <textarea
                 className="btlc-input"
                 rows={1}
-                placeholder={repo ? `Ask about ${repo.full_name.split('/').pop()}…` : 'Ask Byte-ling…'}
+                placeholder={image ? 'Ask about this screenshot…' : (repo ? `Ask about ${repo.full_name.split('/').pop()}…` : 'Ask Byte-ling…')}
                 value={input}
                 onChange={(e) => { setInput(e.target.value); bump(); }}
+                onPaste={async (e) => {
+                  const item = [...(e.clipboardData?.items || [])].find((it) => it.type.startsWith('image/'));
+                  if (item) { e.preventDefault(); const url = await readImageFile(item.getAsFile()); if (url) setImage(url); }
+                }}
                 onKeyDown={(e) => {
                   if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); submit(); }
                 }}
               />
-              <button className="btlc-send" onClick={submit} disabled={!input.trim() || sending} aria-label="Send">↑</button>
+              <button className="btlc-send" onClick={submit} disabled={(!input.trim() && !image) || sending} aria-label="Send">↑</button>
             </>
           ) : (
             <button className="btlc-signin" onClick={signIn}>Sign in to chat</button>
@@ -708,6 +747,14 @@ function EmbedStyles() {
       @keyframes btlc-blink { 0%,80%,100% { opacity: .3; } 40% { opacity: 1; } }
 
       .btlc-composer { display: flex; gap: 8px; padding: 10px; border-top: 1px solid #24242b; align-items: flex-end; }
+      .btlc-attach { flex: 0 0 auto; display: inline-flex; align-items: center; justify-content: center; width: 30px; height: 30px; border-radius: 8px; cursor: pointer; opacity: .8; }
+      .btlc-attach:hover { opacity: 1; background: rgba(255,255,255,.06); }
+      .btlc-attach img { width: 16px; height: 16px; display: block; }
+      .btlc-shotchip { display: flex; align-items: center; gap: 8px; margin: 0 10px; padding: 6px 8px; background: rgba(255,255,255,.05); border: 1px solid #24242b; border-radius: 8px; font-size: 12px; color: #a9a9b2; }
+      .btlc-shotchip img { width: 28px; height: 28px; object-fit: cover; border-radius: 5px; }
+      .btlc-shotchip span { flex: 1; }
+      .btlc-shotchip button { border: 0; background: transparent; color: #a9a9b2; cursor: pointer; font-size: 16px; line-height: 1; padding: 0 2px; }
+      .btlc-shot { display: block; max-width: 100%; border-radius: 8px; margin-bottom: 6px; }
       .btlc-input {
         flex: 1; resize: none; max-height: 96px; background: #101014; color: #e9e9ee;
         border: 1px solid #2c2c34; border-radius: 10px; padding: 9px 11px; font: inherit; font-size: 13.5px;

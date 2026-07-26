@@ -167,6 +167,20 @@ async function fetchRepoTreeText(token: string, fullName: string, ref: string): 
   return paths.slice(0, LIMIT).join('\n') + (paths.length > LIMIT ? `\n… (${paths.length - LIMIT} more)` : '');
 }
 
+// Parse a client-supplied screenshot (a data: URL) into an Anthropic image
+// source. Rejects anything that isn't a supported image or is too large.
+const IMG_TYPES = new Set(['image/png', 'image/jpeg', 'image/gif', 'image/webp']);
+const MAX_IMG_B64 = 7_000_000; // ~5 MB decoded
+function parseImageInput(raw: unknown): { media_type: string; data: string } | null {
+  if (typeof raw !== 'string' || !raw) return null;
+  const m = raw.match(/^data:(image\/[a-zA-Z+]+);base64,(.+)$/);
+  if (!m) return null;
+  const media_type = m[1].toLowerCase();
+  const data = m[2];
+  if (!IMG_TYPES.has(media_type) || data.length > MAX_IMG_B64) return null;
+  return { media_type, data };
+}
+
 Deno.serve(async (req) => {
   try {
     const base44 = createClientFromRequest(req);
@@ -279,12 +293,26 @@ Deno.serve(async (req) => {
     }
 
     const contextBlock = buildContextBlock(body.context, repoFullName);
-    const userContent = contextBlock ? `${contextBlock}\n\n---\n\n${message}` : message;
-    anthropicMessages.push({ role: 'user', content: userContent });
+    const userText = contextBlock ? `${contextBlock}\n\n---\n\n${message}` : message;
+    const image = parseImageInput(body.image);
+    if (image) {
+      anthropicMessages.push({
+        role: 'user',
+        content: [
+          { type: 'image', source: { type: 'base64', media_type: image.media_type, data: image.data } },
+          { type: 'text', text: userText || 'Look at this screenshot — what do you see?' }
+        ] as unknown as Anthropic.ContentBlockParam[]
+      });
+    } else {
+      anthropicMessages.push({ role: 'user', content: userText });
+    }
 
     // Give Byteling the openable-repo list and a tool to switch the workspace,
     // so "open my Nexus app" resolves to an exact repo and signals the frontend.
     let system = SYSTEM_PROMPT;
+    if (image) {
+      system += `\n\nThe user attached a screenshot — respond to what you actually SEE in it (layout, spacing, alignment, contrast, overflow, visible bugs), not the DOM or a guess. Lead with what matters; don't narrate the whole image back. If it's a UI/UX issue and you can reach the repo that renders it, connect what you see to the code (read_repo) and offer a concrete fix or a PR.`;
+    }
     const tools = [];
     let githubToken: string | null = null;
     const refCache = new Map<string, string>(); // repo → default branch, for read_repo
