@@ -421,6 +421,9 @@ function EmbedApp({ hue, dockSize: initialDockSize }) {
         history,
         repo_full_name: repo?.full_name,
         context: repo ? { tree_text: repo.tree_text } : undefined,
+        // Give Byte the openable-repo list so he can open one by name himself
+        // ("look at my emberweave repo") instead of only via the picker.
+        repos: (repos || []).map((r) => ({ full_name: r.full_name, description: r.description })),
         ui_elements: uiElements
       }, token);
       setSending(false);

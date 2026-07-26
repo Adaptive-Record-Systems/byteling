@@ -305,7 +305,7 @@ Deno.serve(async (req) => {
       githubToken = conns?.[0]?.access_token ?? null;
 
       if (githubToken) {
-        system += `\n\nDeep dive: you can read the full contents of any file in the open repo yourself with the read_files tool (exact paths from the file tree, up to ${MAX_READ_FILES} per call). Investigate before answering — pull the files you actually need instead of asking the user to paste them or guessing at contents. Read a handful at a time, follow the imports, and stop once you have enough to answer. If a read fails (too large, binary, or missing), say so plainly.`;
+        system += `\n\nDeep dive: you can read the full contents of any file in the open repo yourself with the read_files tool (exact paths from the file tree, up to ${MAX_READ_FILES} per call). Investigate before answering — pull the files you actually need instead of asking the user to paste them or guessing at contents. Read a handful at a time, follow the imports, and stop once you have enough to answer. If a read fails (too large, binary, or missing), say so plainly. CRUCIAL: when you need a file, call read_files THIS turn and give your answer only once its contents come back — NEVER end a turn with "let me look", "reading now", or "give me a moment" as your whole reply; that leaves the user waiting on a read that never happens. Read, then answer, in the same turn.`;
         tools.push({
           name: 'read_files',
           description:
@@ -323,6 +323,8 @@ Deno.serve(async (req) => {
             additionalProperties: false
           }
         });
+      } else {
+        system += `\n\nRight now you cannot read this repo's files (no active GitHub connection). Do not narrate reading — say plainly you'd need GitHub connected in Byte-ling to read the code, and help with what you can without it.`;
       }
 
       system += `\n\nOpening a pull request: if the user asks you to change or fix something and open a PR, you MUST call the propose_pr tool this turn — describing the change in words does not make it happen, only propose_pr does. Say one short line about the fix, then call propose_pr with the COMPLETE new content of each changed file (a full file, never a diff). Change only what the fix needs. If you don't have the current contents of a file you'd need to change, read it with read_files first — never call propose_pr with guessed content. Never claim a PR is open — propose_pr hands the change to the user to confirm and open.`;
@@ -353,6 +355,8 @@ Deno.serve(async (req) => {
           additionalProperties: false
         }
       });
+    } else {
+      system += `\n\nRIGHT NOW no repository is open — you have no file tree and cannot read any files. Do NOT say you are reading, about to read, "let me look", or "give me a moment"; there is nothing for you to look at. If they want you to look at their code, ${repos.length ? "open one yourself with open_repo (an exact full_name from the list above), or ask which repo they mean" : "tell them to open a repo first with the \"pick a repo\" control at the top"}. Be honest about this instead of narrating a read you cannot do.`;
     }
 
     // Anti-repeat: hand back the last reply's opening so Byteling doesn't fall
