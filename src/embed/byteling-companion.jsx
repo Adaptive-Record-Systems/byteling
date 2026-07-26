@@ -476,8 +476,10 @@ function EmbedApp({ hue, dockSize: initialDockSize }) {
         <Lantern mood={mood} pulse={pulse} hue={hue} size={dockSize} />
       </button>
 
-      {/* The flame can leave the lantern to point at controls on the host page. */}
-      <FlyingFlame ref={flyRef} hue={hue ?? 200} homeRef={dockRef} />
+      {/* The flame can leave the lantern to point at controls on the host page.
+          The comet clip is served from the Byte-ling origin (not inlined into
+          embed.js); FlyingFlame falls back to the still flame if it 404s. */}
+      <FlyingFlame ref={flyRef} hue={hue ?? 200} homeRef={dockRef} comet={`${BYTELING_BASE}/flame-comet.mp4`} />
 
       <EmbedStyles />
     </div>

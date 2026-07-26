@@ -45,9 +45,10 @@ export const FlyingFlame = forwardRef(function FlyingFlame({ hue = 200, homeRef,
   const flameRef = useRef(null);  // idle flame <video> (landed form)
   const [ring, setRing] = useState(null); // { left, top, width, height }
   const [phase, setPhase] = useState('idle'); // idle | dart | landed
+  const [cometFailed, setCometFailed] = useState(false); // served clip 404'd → still flame
   const busy = useRef(false);
   const tint = hue == null ? 200 : hue;
-  const useComet = !!comet;
+  const useComet = !!comet && !cometFailed;
 
   const flyTo = useCallback(
     async (targetEl, { hold = 1300 } = {}) => {
@@ -171,10 +172,10 @@ export const FlyingFlame = forwardRef(function FlyingFlame({ hue = 200, homeRef,
         style={{ position: 'fixed', left: 0, top: 0, width: 0, height: 0, zIndex: 60, pointerEvents: 'none', opacity: 0, willChange: 'transform' }}
       >
         {useComet ? (
-          <video ref={cometRef} className="btl-fly-comet" src={comet} muted loop playsInline
-            style={{ filter: artFilter }} />
+          <video ref={cometRef} className="btl-fly-comet" src={comet} onError={() => setCometFailed(true)}
+            muted loop playsInline style={{ filter: artFilter }} />
         ) : (
-          <img className="btl-fly-comet" src={flameStill} alt="" draggable="false" style={{ filter: artFilter }} />
+          <img className="btl-fly-still" src={flameStill} alt="" draggable="false" style={{ filter: artFilter }} />
         )}
         {flame ? (
           <video ref={flameRef} className="btl-fly-flame" src={flame} muted loop playsInline
@@ -197,7 +198,7 @@ export const FlyingFlame = forwardRef(function FlyingFlame({ hue = 200, homeRef,
       )}
 
       <style>{`
-        .btl-fly-comet, .btl-fly-flame {
+        .btl-fly-comet, .btl-fly-flame, .btl-fly-still {
           position: absolute; left: 0; top: 0; transform: translate(-50%, -50%);
           display: none; user-select: none; -webkit-user-drag: none;
         }
@@ -208,8 +209,10 @@ export const FlyingFlame = forwardRef(function FlyingFlame({ hue = 200, homeRef,
           -webkit-mask: radial-gradient(30px at 6% 10%, transparent 0 48%, #000 82%);
                   mask: radial-gradient(30px at 6% 10%, transparent 0 48%, #000 82%);
         }
-        .btl-fly-flame { width: 52px; height: 52px; object-fit: contain; }
-        .btl-fly[data-phase="dart"]   .btl-fly-comet { display: block; }
+        /* still-flame fallback (no comet, or the clip failed to load): square, upright */
+        .btl-fly-flame, .btl-fly-still { width: 52px; height: 52px; object-fit: contain; }
+        .btl-fly[data-phase="dart"]   .btl-fly-comet,
+        .btl-fly[data-phase="dart"]   .btl-fly-still { display: block; }
         .btl-fly[data-phase="landed"] .btl-fly-flame { display: block; }
 
         .btl-flyring { animation: btl-flyring-in .32s cubic-bezier(.2,.8,.2,1) both; }
