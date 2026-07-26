@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { Lantern, FlameMark } from '@/components/Lantern';
+import { FlyingFlame } from '@/components/FlyingFlame';
 
 // The <script> tag that loaded this bundle — captured at load so auto-mount can
 // read its data-* config (data-hue / data-size) even after DOM ready.
@@ -92,6 +93,42 @@ async function callFn(name, body, token) {
 
 const MAX_TREE_LINES = 1000;
 
+// Only scan the host page when the user is actually asking to be shown where
+// something is — never in the background.
+const LOCATE_RE = /\b(where|point (me )?(to|at)|highlight|take me to|jump to|show me where|which (button|tab|link|menu|control|option|setting))\b/i;
+// Dead zones: never scan password/secret controls. Same selectors the app uses.
+const HOST_SENSITIVE_SEL = 'input[type="password"], [autocomplete*="password"], [autocomplete*="cc-"], [data-sensitive]';
+
+/**
+ * Scan the HOST page's visible, interactive controls so Byte-ling can point the
+ * flame at the one the user asked about. Runs in the embed's context, so
+ * `document` is the host page (the embed's own UI is inside a shadow root and is
+ * invisible to this query). Credential-blind: skips password/secret fields, and
+ * only ever collects control LABELS + positions — never values a user typed.
+ * Returns [{ id, label, el }] (el kept locally to fly the flame; only id+label
+ * are sent to the backend).
+ */
+function scanHostUi() {
+  const out = [];
+  const seen = new Set();
+  const els = document.querySelectorAll(
+    'button, a[href], [role="button"], [role="link"], [role="tab"], [role="menuitem"], summary, input[type="submit"], input[type="button"]'
+  );
+  for (const el of els) {
+    if (out.length >= 40) break;
+    if (el.matches(HOST_SENSITIVE_SEL) || el.closest(HOST_SENSITIVE_SEL)) continue; // dead zone
+    const r = el.getBoundingClientRect();
+    if (r.width < 6 || r.height < 6) continue; // not visible
+    if (r.bottom < 0 || r.top > window.innerHeight || r.right < 0 || r.left > window.innerWidth) continue; // off-screen
+    const label = (el.getAttribute('aria-label') || el.textContent || el.value || el.getAttribute('title') || '')
+      .replace(/\s+/g, ' ').trim().slice(0, 60);
+    if (!label || seen.has(label)) continue;
+    seen.add(label);
+    out.push({ id: 'host-' + out.length, label, el });
+  }
+  return out;
+}
+
 function EmbedApp({ hue, dockSize: initialDockSize }) {
   const [open, setOpen] = useState(false);
   const [dockSize, setDockSize] = useState(() => readSize(initialDockSize));
@@ -111,6 +148,8 @@ function EmbedApp({ hue, dockSize: initialDockSize }) {
   const [repoError, setRepoError] = useState(null);
   const idRef = useRef(0);
   const scrollRef = useRef(null);
+  const dockRef = useRef(null);  // the docked lantern — where the flame launches from
+  const flyRef = useRef(null);   // FlyingFlame handle: flyRef.current.flyTo(hostEl)
 
   const fire = (kind) => setPulse({ id: ++idRef.current, kind });
   const mood = sending ? 'thinking' : 'resting';
@@ -242,12 +281,27 @@ function EmbedApp({ hue, dockSize: initialDockSize }) {
     setMessages((m) => [...m, { role: 'user', text }]);
     setSending(true);
     fire('notice');
+
+    // "Where is X?" → scan the host page's controls so Byte can point the flame
+    // at one. Only on a locate-type ask; credential-blind; labels only. The
+    // element handles stay local (hostMap); only {id,label} go to the backend.
+    let hostMap = null;
+    let uiElements;
+    if (LOCATE_RE.test(text)) {
+      const scan = scanHostUi();
+      if (scan.length) {
+        hostMap = new Map(scan.map((s) => [s.id, s.el]));
+        uiElements = scan.map((s) => ({ id: s.id, label: s.label }));
+      }
+    }
+
     try {
       const data = await callFn('claude-chat', {
         message: text,
         history,
         repo_full_name: repo?.full_name,
-        context: repo ? { tree_text: repo.tree_text } : undefined
+        context: repo ? { tree_text: repo.tree_text } : undefined,
+        ui_elements: uiElements
       }, token);
       setSending(false);
       fire('spark');
@@ -255,6 +309,11 @@ function EmbedApp({ hue, dockSize: initialDockSize }) {
         setMessages((m) => [...m, { role: 'assistant', text: data.reply || '', proposal: data.pr_proposal || null }]);
       }
       if (data.open_repo) openRepo(data.open_repo);
+      // Byte pointed at a host-page control — send the flame across to it.
+      if (data.point_at && hostMap) {
+        const el = hostMap.get(data.point_at);
+        if (el) setTimeout(() => flyRef.current?.flyTo(el), 200);
+      }
     } catch (e) {
       setSending(false);
       if (e.status === 401) clearToken();
@@ -406,6 +465,7 @@ function EmbedApp({ hue, dockSize: initialDockSize }) {
       )}
 
       <button
+        ref={dockRef}
         className="btlc-dock"
         style={{ width: dockSize, cursor: unlocked ? 'grab' : 'pointer', touchAction: unlocked ? 'none' : 'auto' }}
         onPointerDown={onDockPointerDown}
@@ -415,6 +475,9 @@ function EmbedApp({ hue, dockSize: initialDockSize }) {
       >
         <Lantern mood={mood} pulse={pulse} hue={hue} size={dockSize} />
       </button>
+
+      {/* The flame can leave the lantern to point at controls on the host page. */}
+      <FlyingFlame ref={flyRef} hue={hue ?? 200} homeRef={dockRef} />
 
       <EmbedStyles />
     </div>
