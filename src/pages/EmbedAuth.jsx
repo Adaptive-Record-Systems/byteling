@@ -31,15 +31,21 @@ export default function EmbedAuth() {
       }
 
       // Validate it before handing it over; a stale token → re-login.
+      let me = null;
       try {
-        await base44.auth.me();
+        me = await base44.auth.me();
       } catch {
         base44.auth.redirectToLogin(window.location.href);
         return;
       }
 
+      // First name for the greeting (falls back to the email prefix). Not secret,
+      // but only sent to the opener's exact origin like the token.
+      const name = (me?.full_name || me?.name || '').trim().split(/\s+/)[0]
+        || (me?.email ? me.email.split('@')[0] : '');
+
       if (window.opener && opener) {
-        window.opener.postMessage({ type: 'byteling-auth', token }, opener);
+        window.opener.postMessage({ type: 'byteling-auth', token, name }, opener);
         setStatus('Signed in — you can close this window.');
         setTimeout(() => window.close(), 400);
       } else {
