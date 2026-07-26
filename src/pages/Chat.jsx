@@ -16,6 +16,7 @@ import {
 import { useAuth } from '@/lib/AuthContext';
 import { Lantern, FlameMark, hueFromRepo } from '@/components/Lantern';
 import { FlyingFlame } from '@/components/FlyingFlame';
+import { SprenFlourish } from '@/components/SprenFlourish';
 import flameVideo from '@/assets/lantern/Flame_idle.mp4';
 import cometVideo from '@/assets/lantern/flame-comet.mp4';
 
@@ -320,6 +321,9 @@ export default function Chat() {
 
       {/* The flame can leave the lantern to point at things on screen. */}
       <FlyingFlame ref={flameFlyRef} hue={lanternHue ?? 200} homeRef={lanternWrapRef} comet={cometVideo} flame={flameVideo} />
+
+      {/* Rare, brief spren flourishes from the lantern — surprise, not wallpaper. */}
+      <SprenFlourish anchorRef={lanternWrapRef} hue={lanternHue ?? 200} />
 
       <div className="w-full max-w-3xl mx-auto px-4 py-4 flex-1 flex flex-col min-h-0">
         {/* Header */}
