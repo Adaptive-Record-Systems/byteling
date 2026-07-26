@@ -40,7 +40,7 @@ const REACTION_MS = 1600;
 const WINGS_OPEN = new Set(['thinking', 'drift', 'notice', 'spark']);
 const THINKING_HUE = 280; // flame shifts toward violet while Byte is thinking/working
 
-export function Lantern({ mood = 'resting', pulse, hue = null, className = '', flameVideo = null, size = 160 }) {
+export function Lantern({ mood = 'resting', pulse, hue = null, className = '', flameVideo = null, size = 160, flameHidden = false }) {
   const [reaction, setReaction] = useState(null);
   const lastPulse = useRef(null);
   const videoRef = useRef(null);
@@ -93,6 +93,7 @@ export function Lantern({ mood = 'resting', pulse, hue = null, className = '', f
     <div
       className={`btl-lantern btl-${state} ${wingsOpen ? 'btl-wings-open' : ''} ${className}`}
       style={{ '--btl-hue': activeTint, '--btl-size': typeof size === 'number' ? `${size}px` : size }}
+      data-flame-hidden={flameHidden ? 'true' : undefined}
       role="img"
       aria-label={`Byte-ling — ${reaction || mood}`}
     >
@@ -170,7 +171,11 @@ function LanternStyles() {
       .btl-flame-slot {
         position: absolute; inset: 0; pointer-events: none;
         clip-path: ellipse(9.8% 11% at 50.5% 55%);
+        transition: opacity .3s ease;
       }
+      /* The flame steps out for a video flourish — the chamber goes dark, then
+         the idle flame fades back in when the flourish hands back. */
+      .btl-lantern[data-flame-hidden="true"] .btl-flame-slot { opacity: 0; }
       .btl-flame-img {
         position: absolute;
         left: 50.5%; bottom: 30%;
