@@ -421,9 +421,26 @@ function EmbedApp({ hue, dockSize: initialDockSize }) {
     }
   };
 
-  // "Let Byte see my screen" — the browser's screen-share permission picker.
-  // The user chooses what to share; grab one downscaled frame and attach it.
+  // "Let Byte see my screen" — one downscaled frame attached to the next turn.
   const captureScreen = async () => {
+    // Extension: one click grabs the visible tab via the background worker
+    // (activeTab grant, no getDisplayMedia picker that a page's policy can block).
+    if (IS_EXTENSION && chrome?.runtime?.sendMessage) {
+      try {
+        const res = await chrome.runtime.sendMessage({ type: 'byteling-capture-tab' });
+        if (res?.ok && res.dataUrl) {
+          setImage(res.dataUrl);
+          if (!open) setOpen(true);
+        } else {
+          setMessages((m) => [...m, { role: 'assistant', text: "Couldn't capture this tab — some pages (the store, browser settings) block it. Attach a screenshot instead.", error: true }]);
+        }
+      } catch {
+        setMessages((m) => [...m, { role: 'assistant', text: "Couldn't capture this tab — attach a screenshot instead.", error: true }]);
+      }
+      return;
+    }
+    // Web embed: the browser's screen-share permission picker. The user chooses
+    // what to share; we grab one downscaled frame.
     if (!navigator.mediaDevices?.getDisplayMedia) {
       setMessages((m) => [...m, { role: 'assistant', text: "Screen capture isn't available here — paste or attach a screenshot instead.", error: true }]);
       return;
@@ -653,7 +670,7 @@ function EmbedApp({ hue, dockSize: initialDockSize }) {
                 <input type="file" accept="image/*" style={{ display: 'none' }}
                   onChange={async (e) => { const url = await readImageFile(e.target.files?.[0]); if (url) setImage(url); e.target.value = ''; }} />
               </label>
-              <button type="button" className="btlc-attach" title="Let Byte-ling see your screen — you pick what to share" onClick={captureScreen}>
+              <button type="button" className="btlc-attach" title={IS_EXTENSION ? 'Let Byte-ling see this tab — one click' : 'Let Byte-ling see your screen — you pick what to share'} onClick={captureScreen}>
                 <img alt="" src="data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%23888' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><rect x='2' y='3' width='20' height='14' rx='2'/><path d='M8 21h8M12 17v-4'/></svg>" />
               </button>
               <textarea
