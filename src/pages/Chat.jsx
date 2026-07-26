@@ -18,8 +18,11 @@ import { extractName, firstNameFrom } from '@/lib/name';
 import { Lantern, FlameMark, hueFromRepo } from '@/components/Lantern';
 import { FlyingFlame } from '@/components/FlyingFlame';
 import { SprenFlourish } from '@/components/SprenFlourish';
+import { LanternFlourish } from '@/components/LanternFlourish';
 import flameVideo from '@/assets/lantern/Flame_idle.mp4';
 import cometVideo from '@/assets/lantern/flame-comet.mp4';
+import flameToLeaves from '@/assets/lantern/flame-to-leaves.mp4';
+import ribbonToFlame from '@/assets/lantern/ribbon-to-flame.mp4';
 
 const LAST_REPO_KEY = 'byteling_last_repo';
 const NAME_KEY = 'byteling_app_name';       // name the user stated in chat (first-party, persisted)
@@ -110,6 +113,7 @@ export default function Chat() {
   // reaction; `mood` is the steady state; the flame is tinted by the open repo.
   const [pulse, setPulse] = useState(null);
   const [idle, setIdle] = useState(false);
+  const [flameHidden, setFlameHidden] = useState(false); // idle flame steps out for a video flourish
   const pulseId = useRef(0);
   const firePulse = (kind) => setPulse({ id: (pulseId.current += 1), kind });
   const lanternHue = useMemo(() => hueFromRepo(repo?.full_name), [repo]);
@@ -344,14 +348,24 @@ export default function Chat() {
       {/* The lantern hangs from the top edge — a presence you forget is there
           until the moment you need the corner lit. It reacts to chat events. */}
       <div ref={lanternWrapRef} className="fixed top-0 right-4 sm:right-8 z-20 pointer-events-none">
-        <Lantern mood={lanternMood} pulse={pulse} hue={lanternHue} flameVideo={flameVideo} />
+        <Lantern mood={lanternMood} pulse={pulse} hue={lanternHue} flameVideo={flameVideo} flameHidden={flameHidden} />
       </div>
 
       {/* The flame can leave the lantern to point at things on screen. */}
       <FlyingFlame ref={flameFlyRef} hue={lanternHue ?? 200} homeRef={lanternWrapRef} comet={cometVideo} flame={flameVideo} />
 
-      {/* Rare, brief spren flourishes from the lantern — surprise, not wallpaper. */}
-      <SprenFlourish anchorRef={lanternWrapRef} hue={lanternHue ?? 200} />
+      {/* Rare spren flourish — the flame leaves the lantern as leaves and returns
+          as a ribbon. Self-scheduled (15–40 min); hides the idle flame while it runs. */}
+      <LanternFlourish
+        anchorRef={lanternWrapRef}
+        hue={lanternHue ?? 200}
+        outClip={flameToLeaves}
+        inClip={ribbonToFlame}
+        onActiveChange={setFlameHidden}
+      />
+      {/* Canvas particle flourishes kept available (embers), scheduler off — the
+          video flourish above is the ambient one now. */}
+      <SprenFlourish anchorRef={lanternWrapRef} hue={lanternHue ?? 200} enabled={false} />
 
       <div className="w-full max-w-3xl mx-auto px-4 py-4 flex-1 flex flex-col min-h-0">
         {/* Header */}

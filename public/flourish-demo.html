@@ -1,0 +1,149 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Byte-ling — video flourish calibration</title>
+  <style>
+    :root { --hue: 200; color-scheme: dark; }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0; min-height: 100vh; background: #0e0e10; color: #ececed;
+      font-family: ui-sans-serif, system-ui, sans-serif; line-height: 1.55; overflow: hidden;
+    }
+    .wrap { max-width: 560px; padding: 40px 26px; }
+    h1 { font-size: 22px; font-weight: 800; margin: 0 0 4px; }
+    p { color: #a2a2ac; margin: 0 0 20px; font-size: 14px; }
+
+    /* the lantern marker — mimics the app's top-right hang */
+    .lantern {
+      position: fixed; top: 0; right: 32px; width: 160px; height: 160px; z-index: 20;
+      pointer-events: none;
+    }
+    .lantern .vessel {
+      position: absolute; left: 50.5%; top: 55%; transform: translate(-50%, -50%);
+      width: 20%; height: 22%;
+      border: 2px solid hsl(var(--hue) 40% 48% / .7); border-radius: 46% 46% 44% 44% / 40% 40% 60% 60%;
+      background: radial-gradient(ellipse at 50% 62%, hsl(var(--hue) 90% 60% / .25), transparent 70%);
+    }
+    .lantern .seat {
+      position: absolute; left: 50.5%; top: 70%; width: 6px; height: 6px; margin: -3px 0 0 -3px;
+      background: hsl(var(--hue) 100% 70%); border-radius: 50%; opacity: .0;
+    }
+    .lantern.show-seat .seat { opacity: 1; box-shadow: 0 0 8px hsl(var(--hue) 100% 60%); }
+
+    .controls { display: flex; flex-direction: column; gap: 12px; margin-top: 12px; }
+    .btns { display: flex; gap: 8px; flex-wrap: wrap; }
+    button.tool {
+      border: 1px solid #2a2a31; background: #17171b; color: #ececed; font: inherit; font-size: 13px;
+      padding: 8px 13px; border-radius: 9px; cursor: pointer;
+    }
+    button.tool:hover { border-color: hsl(var(--hue) 60% 55%); }
+    .slider { display: grid; grid-template-columns: 92px 1fr 56px; gap: 10px; align-items: center; font-size: 12.5px; color: #a2a2ac; }
+    .slider .v { text-align: right; color: #cfcfd6; font-variant-numeric: tabular-nums; }
+    input[type=range] { width: 100%; accent-color: hsl(var(--hue) 80% 60%); }
+    .readout {
+      margin-top: 14px; padding: 10px 12px; border: 1px solid #26262e; border-radius: 8px;
+      background: #131317; font-family: ui-monospace, monospace; font-size: 12px; color: #b8b8c0; white-space: pre;
+    }
+    .status { font-size: 12px; color: #6f6f79; margin-top: 8px; min-height: 16px; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <h1>Video flourish — calibration</h1>
+    <p>Anchor the flame on the lantern seat, judge the leaving/returning. Numbers update the readout at the bottom — tell me the good ones (or I'll read them) and I'll bake them into the component.</p>
+
+    <div class="controls">
+      <div class="btns">
+        <button class="tool" id="seq">Play full sequence</button>
+        <button class="tool" id="outb">OUT only</button>
+        <button class="tool" id="inb">IN only</button>
+        <button class="tool" id="seat">Toggle seat dot</button>
+      </div>
+      <div class="slider"><label>Flame X</label><input id="fx" type="range" min="0" max="1" step="0.005" value="0.5"><span class="v" id="fxv">0.500</span></div>
+      <div class="slider"><label>Flame Y</label><input id="fy" type="range" min="0" max="1" step="0.005" value="0.6"><span class="v" id="fyv">0.600</span></div>
+      <div class="slider"><label>Height ×</label><input id="hm" type="range" min="1.5" max="6" step="0.1" value="3.4"><span class="v" id="hmv">3.4</span></div>
+      <div class="slider"><label>Dark gap ms</label><input id="gap" type="range" min="0" max="1500" step="50" value="650"><span class="v" id="gapv">650</span></div>
+      <div class="slider"><label>Hue</label><input id="hue" type="range" min="0" max="360" step="1" value="200"><span class="v" id="huev">200</span></div>
+    </div>
+    <div class="readout" id="readout"></div>
+    <div class="status" id="status">Ready.</div>
+  </div>
+
+  <div class="lantern" id="lantern"><div class="vessel"></div><div class="seat"></div></div>
+
+  <svg width="0" height="0" aria-hidden="true" style="position:absolute">
+    <filter id="btl-spren-alpha" color-interpolation-filters="sRGB">
+      <feColorMatrix type="matrix" values="1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0.4 0.6 0.5 0 0" />
+      <feComponentTransfer><feFuncA type="gamma" amplitude="1.15" exponent="1.5" offset="0" /></feComponentTransfer>
+    </filter>
+  </svg>
+
+  <video id="vout" muted playsinline preload="auto" src="/src/assets/lantern/flame-to-leaves.mp4"
+    style="position:fixed;left:0;top:0;z-index:40;pointer-events:none;opacity:0;object-fit:fill;transition:opacity .2s ease"></video>
+  <video id="vin" muted playsinline preload="auto" src="/src/assets/lantern/ribbon-to-flame.mp4"
+    style="position:fixed;left:0;top:0;z-index:40;pointer-events:none;opacity:0;object-fit:fill;transition:opacity .2s ease"></video>
+
+  <script>
+    var CLIP_BASE_HUE = 32, SEAT_X = 0.505, SEAT_Y = 0.70, CLIP_MAX = 5600;
+    var $ = function (id) { return document.getElementById(id); };
+    var lantern = $('lantern'), vout = $('vout'), vin = $('vin');
+    var P = { fx: 0.5, fy: 0.6, hm: 3.4, gap: 650, hue: 200 };
+    var busy = false;
+
+    function wait(ms) { return new Promise(function (r) { setTimeout(r, ms); }); }
+    function onceEnded(v) {
+      return new Promise(function (resolve) {
+        var done = false, t;
+        function fin() { if (done) return; done = true; clearTimeout(t); v.removeEventListener('ended', fin); resolve(); }
+        v.addEventListener('ended', fin, { once: true }); t = setTimeout(fin, CLIP_MAX);
+      });
+    }
+    function place(v) {
+      var r = lantern.getBoundingClientRect();
+      var tx = r.left + r.width * SEAT_X, ty = r.top + r.height * SEAT_Y;
+      var h = r.width * P.hm, w = h * (16 / 9);
+      v.style.width = w + 'px'; v.style.height = h + 'px';
+      v.style.left = (tx - P.fx * w) + 'px'; v.style.top = (ty - P.fy * h) + 'px';
+      v.style.filter = 'hue-rotate(' + (P.hue - CLIP_BASE_HUE) + 'deg) brightness(1.05) url(#btl-spren-alpha)';
+    }
+    function readout() {
+      $('readout').textContent =
+        'FLAME_FX = ' + P.fx.toFixed(3) + '\nFLAME_FY = ' + P.fy.toFixed(3) +
+        '\nHEIGHT_MUL = ' + P.hm.toFixed(1) + '\nDARK_MS = ' + P.gap + '\nhue = ' + P.hue;
+    }
+    function setStatus(s) { $('status').textContent = s; }
+
+    async function playOut() { place(vout); try { vout.currentTime = 0; } catch (e) {} vout.style.opacity = '1'; await vout.play().catch(function(){}); await onceEnded(vout); vout.style.opacity = '0'; vout.pause(); }
+    async function playIn() { place(vin); try { vin.currentTime = 0; } catch (e) {} vin.style.opacity = '1'; await vin.play().catch(function(){}); await onceEnded(vin); await wait(200); vin.style.opacity = '0'; vin.pause(); }
+    async function sequence() {
+      if (busy) return; busy = true;
+      setStatus('OUT — flame → leaves…'); await playOut();
+      setStatus('dark…'); lantern.style.opacity = '0.001'; await wait(P.gap); lantern.style.opacity = '1';
+      setStatus('IN — ribbon → flame…'); await playIn();
+      setStatus('Done.'); busy = false;
+    }
+
+    function bind(id, key, fmt) {
+      var el = $(id), v = $(id + 'v');
+      el.addEventListener('input', function () {
+        P[key] = +el.value; v.textContent = fmt ? fmt(P[key]) : P[key];
+        if (key === 'hue') document.documentElement.style.setProperty('--hue', P.hue);
+        readout();
+      });
+    }
+    bind('fx', 'fx', function (n) { return n.toFixed(3); });
+    bind('fy', 'fy', function (n) { return n.toFixed(3); });
+    bind('hm', 'hm', function (n) { return n.toFixed(1); });
+    bind('gap', 'gap');
+    bind('hue', 'hue');
+
+    $('seq').addEventListener('click', sequence);
+    $('outb').addEventListener('click', function () { if (!busy) { busy = true; setStatus('OUT…'); playOut().then(function(){ setStatus('Done.'); busy = false; }); } });
+    $('inb').addEventListener('click', function () { if (!busy) { busy = true; setStatus('IN…'); playIn().then(function(){ setStatus('Done.'); busy = false; }); } });
+    $('seat').addEventListener('click', function () { lantern.classList.toggle('show-seat'); });
+    readout();
+  </script>
+</body>
+</html>
