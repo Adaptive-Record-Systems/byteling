@@ -31,6 +31,7 @@ const OPEN_MS = 260;
 const BYTELING_BASE = 'https://byteling-baas-417f0fd8.base44.app';
 const BYTELING_APP_ID = '6a61038cc4bec6bf417f0fd8';
 const TOKEN_KEY = 'byteling_embed_token';
+const NAME_KEY = 'byteling_embed_name';  // the user's first name, for greetings
 const POS_KEY = 'byteling_embed_pos';    // { left, top } once the user moves it
 const SIZE_KEY = 'byteling_embed_size';  // dock px width once the user resizes it
 const DOCK_MIN = 48;
@@ -56,6 +57,37 @@ function forgetToken() {
   if (IS_EXTENSION) return;
   try { localStorage.removeItem(TOKEN_KEY); } catch { /* ignore */ }
 }
+// The name isn't a secret, but mirror the token's storage rule so we don't drop
+// the user's name into an untrusted host page's storage in the extension.
+function readName() {
+  if (IS_EXTENSION) return '';
+  try { return localStorage.getItem(NAME_KEY) || ''; } catch { return ''; }
+}
+function persistName(n) {
+  if (IS_EXTENSION) return;
+  try { localStorage.setItem(NAME_KEY, n); } catch { /* ignore */ }
+}
+function forgetName() {
+  if (IS_EXTENSION) return;
+  try { localStorage.removeItem(NAME_KEY); } catch { /* ignore */ }
+}
+
+// Ambient check-in lines — Byte opens up on his own when it's been quiet a
+// while. Kept light and varied so it never reads as a nag.
+const NUDGES = [
+  "How's it going? What are we working on?",
+  'Need a hand with anything?',
+  "Still here whenever you want to dig into some code.",
+  "What are we building? Point me at a repo and I'll read it.",
+];
+function pickNudge(name) {
+  const withName = name
+    ? [`Hey ${name} — how's it going? What are we working on?`, `Still here, ${name}. Need a hand with anything?`]
+    : [];
+  const all = [...withName, ...NUDGES];
+  return all[Math.floor(Math.random() * all.length)];
+}
+const IDLE_MS = 5 * 60 * 1000; // quiet for this long → Byte checks in once
 function readPos() {
   try {
     const p = JSON.parse(localStorage.getItem(POS_KEY));
@@ -141,6 +173,7 @@ function EmbedApp({ hue, dockSize: initialDockSize }) {
   const [sending, setSending] = useState(false);
   const [pulse, setPulse] = useState(null);
   const [token, setToken] = useState(readToken);
+  const [name, setName] = useState(readName);
   const [repos, setRepos] = useState(null); // null = not loaded yet
   const [repo, setRepo] = useState(null);    // { full_name, tree_text }
   const [pickerOpen, setPickerOpen] = useState(false);
@@ -150,8 +183,13 @@ function EmbedApp({ hue, dockSize: initialDockSize }) {
   const scrollRef = useRef(null);
   const dockRef = useRef(null);  // the docked lantern — where the flame launches from
   const flyRef = useRef(null);   // FlyingFlame handle: flyRef.current.flyTo(hostEl)
+  const lastActivityRef = useRef(Date.now()); // for the ambient check-in timer
+  const nudgedRef = useRef(false);
 
   const fire = (kind) => setPulse({ id: ++idRef.current, kind });
+  // Reset the idle clock on any real interaction so Byte only checks in when
+  // things have genuinely gone quiet.
+  const bump = () => { lastActivityRef.current = Date.now(); nudgedRef.current = false; };
   const mood = sending ? 'thinking' : 'resting';
 
   useEffect(() => {
@@ -165,15 +203,41 @@ function EmbedApp({ hue, dockSize: initialDockSize }) {
       if (e.data && e.data.type === 'byteling-auth' && e.data.token) {
         setToken(e.data.token);
         persistToken(e.data.token);
+        if (typeof e.data.name === 'string' && e.data.name) {
+          setName(e.data.name);
+          persistName(e.data.name);
+        }
+        bump();
       }
     };
     window.addEventListener('message', onMsg);
     return () => window.removeEventListener('message', onMsg);
   }, []);
 
+  // Ambient check-in: when the user's been signed in but quiet for a while,
+  // Byte opens up on his own with a friendly line — once per quiet stretch,
+  // never into a backgrounded tab.
+  useEffect(() => {
+    if (!token) return;
+    bump();
+    const iv = setInterval(() => {
+      if (nudgedRef.current) return;
+      if (typeof document !== 'undefined' && document.visibilityState !== 'visible') return;
+      if (Date.now() - lastActivityRef.current < IDLE_MS) return;
+      nudgedRef.current = true;
+      setMessages((m) => [...m, { role: 'assistant', text: pickNudge(name) }]);
+      setOpen(true);
+      fire('drift');
+    }, 30000);
+    return () => clearInterval(iv);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [token, name]);
+
   const clearToken = () => {
     setToken(null);
     forgetToken();
+    setName('');
+    forgetName();
   };
 
   // Sign out: drop the token and wipe the session-local state so the next
@@ -226,6 +290,7 @@ function EmbedApp({ hue, dockSize: initialDockSize }) {
   };
 
   const signIn = () => {
+    bump();
     const url = `${BYTELING_BASE}/embed-auth?opener=${encodeURIComponent(window.location.origin)}`;
     window.open(url, 'byteling-auth', 'width=460,height=680,menubar=no,toolbar=no');
     if (!open) setOpen(true);
@@ -274,6 +339,7 @@ function EmbedApp({ hue, dockSize: initialDockSize }) {
     const text = input.trim();
     if (!text || sending) return;
     if (!token) { signIn(); return; }
+    bump();
 
     // The embed keeps its own thread and replays it as history (no session_id).
     const history = messages.filter((m) => !m.error).map((m) => ({ role: m.role, text: m.text }));
@@ -382,7 +448,7 @@ function EmbedApp({ hue, dockSize: initialDockSize }) {
             <div className="btlc-aside">
               <FlameMark hue={hue ?? 42} />
               {token
-                ? ' There you are. Ask me anything — I read code, spot fixes, and open PRs.'
+                ? ` Welcome back${name ? ', ' + name : ''}. Ask me anything — I read code, spot fixes, and open PRs.`
                 : ' Sign in with your Byte-ling account to chat with your own Anthropic key.'}
             </div>
           )}
@@ -436,7 +502,7 @@ function EmbedApp({ hue, dockSize: initialDockSize }) {
                 rows={1}
                 placeholder={repo ? `Ask about ${repo.full_name.split('/').pop()}…` : 'Ask Byte-ling…'}
                 value={input}
-                onChange={(e) => setInput(e.target.value)}
+                onChange={(e) => { setInput(e.target.value); bump(); }}
                 onKeyDown={(e) => {
                   if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); submit(); }
                 }}
