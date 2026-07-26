@@ -14,12 +14,16 @@ import {
   GitPullRequest, ExternalLink, Puzzle, LogOut, Paperclip, Monitor
 } from 'lucide-react';
 import { useAuth } from '@/lib/AuthContext';
+import { extractName, firstNameFrom } from '@/lib/name';
 import { Lantern, FlameMark, hueFromRepo } from '@/components/Lantern';
 import { FlyingFlame } from '@/components/FlyingFlame';
+import { SprenFlourish } from '@/components/SprenFlourish';
 import flameVideo from '@/assets/lantern/Flame_idle.mp4';
 import cometVideo from '@/assets/lantern/flame-comet.mp4';
 
 const LAST_REPO_KEY = 'byteling_last_repo';
+const NAME_KEY = 'byteling_app_name';       // name the user stated in chat (first-party, persisted)
+const NAME_PIN_KEY = 'byteling_app_name_pin';
 const MAX_TREE_LINES = 1200;
 
 // Read an image File/Blob into a data URL for the vision call.
@@ -63,7 +67,18 @@ function ByteAvatar({ hue = 42 }) {
 }
 
 export default function Chat() {
-  const { logout } = useAuth(); // Sign out → clears the token (localStorage) + server cookie
+  const { logout, user } = useAuth(); // Sign out → clears the token (localStorage) + server cookie
+
+  // Name memory: prefer the name the user states in chat over their login handle
+  // (never greet by "cfair1911"). First-party app → localStorage is fine to persist.
+  const [userName, setUserName] = useState(() => {
+    try { return localStorage.getItem(NAME_KEY) || ''; } catch { return ''; }
+  });
+  const namePinnedRef = useRef((() => {
+    try { return localStorage.getItem(NAME_PIN_KEY) === '1'; } catch { return false; }
+  })());
+  const loginName = firstNameFrom(user?.full_name);
+  const effectiveName = userName || loginName;
   const [connection, setConnection] = useState(null);
   const [repos, setRepos] = useState([]);
   const [repo, setRepo] = useState(null);
@@ -182,10 +197,13 @@ export default function Chat() {
 
   const confirmPr = async (idx) => {
     const m = messages[idx];
-    if (!m?.proposal || !repo) return;
+    // Write narrow: the PR opens against the target Byte named (or the user's
+    // override), NOT just whatever repo happens to be open. See the proposal card.
+    const target = m?.writeRepo || m?.proposal?.repo_full_name || repo?.full_name;
+    if (!m?.proposal || !target) return;
     patchMessage(idx, { prPending: true, prError: null });
     try {
-      const res = await openPr({ repoFullName: repo.full_name, ...m.proposal });
+      const res = await openPr({ repoFullName: target, ...m.proposal });
       patchMessage(idx, { prResult: res, prPending: false, proposal: null });
       firePulse('spark'); // a PR landed — bright celebratory flare
     } catch (e) {
@@ -265,6 +283,16 @@ export default function Chat() {
     const text = input.trim();
     if ((!text && !image) || sending) return;
     setChatError(null);
+
+    // If they tell Byte their name, remember it (over the login name) and pin it.
+    const stated = extractName(text);
+    if (stated) {
+      setUserName(stated);
+      namePinnedRef.current = true;
+      try { localStorage.setItem(NAME_KEY, stated); localStorage.setItem(NAME_PIN_KEY, '1'); } catch { /* ignore */ }
+    }
+    const nameForTurn = stated || userName || loginName;
+
     const shot = image; // the attached screenshot, sent once with this turn
     setInput('');
     setImage(null);
@@ -289,7 +317,8 @@ export default function Chat() {
         context: buildContext(),
         repos: repoList.map((r) => ({ full_name: r.full_name, description: r.description })),
         uiElements: collectUiElements(),
-        image: shot // a screenshot for Byte to actually see
+        image: shot, // a screenshot for Byte to actually see
+        userName: nameForTurn // greet/refer by their real name, not the login handle
       });
       if (res.reply || res.pr_proposal) {
         setMessages((prev) => [...prev, { role: 'assistant', text: res.reply || '', proposal: res.pr_proposal || null }]);
@@ -320,6 +349,9 @@ export default function Chat() {
 
       {/* The flame can leave the lantern to point at things on screen. */}
       <FlyingFlame ref={flameFlyRef} hue={lanternHue ?? 200} homeRef={lanternWrapRef} comet={cometVideo} flame={flameVideo} />
+
+      {/* Rare, brief spren flourishes from the lantern — surprise, not wallpaper. */}
+      <SprenFlourish anchorRef={lanternWrapRef} hue={lanternHue ?? 200} />
 
       <div className="w-full max-w-3xl mx-auto px-4 py-4 flex-1 flex flex-col min-h-0">
         {/* Header */}
@@ -426,7 +458,10 @@ export default function Chat() {
         {/* Thread */}
         <div ref={scrollRef} className="flex-1 min-h-0 overflow-y-auto space-y-4 pr-1 flex flex-col">
           {messages.length === 0 && !repo && (
-            <Aside>There you are. Tell me which repo to open — or just describe it, like &ldquo;check out my Nexus app.&rdquo;</Aside>
+            <Aside>
+              {effectiveName ? `There you are, ${effectiveName}. ` : 'There you are. '}
+              Tell me which repo to open — or just describe it, like &ldquo;check out my Nexus app.&rdquo;
+            </Aside>
           )}
           {messages.length === 0 && repo && (
             <Aside>Got {repo.full_name} open. Ask me anything about it.</Aside>
@@ -462,7 +497,13 @@ export default function Chat() {
                     </a>
                   )}
 
-                  {m.proposal && !m.prResult && (
+                  {m.proposal && !m.prResult && (() => {
+                    // Write narrow: show exactly which repo this PR lands on, and
+                    // let the user pick it before opening. Default = the repo Byte
+                    // read the change from (or the open repo). Flag a cross-repo write.
+                    const target = m.writeRepo || m.proposal.repo_full_name || repo?.full_name || '';
+                    const crossRepo = target && repo?.full_name && target !== repo.full_name;
+                    return (
                     <div className="rounded-lg border border-primary/20 bg-background/40 p-3">
                       <div className="flex items-center gap-2 text-sm font-medium">
                         <GitPullRequest className="w-4 h-4 text-primary" />
@@ -471,9 +512,30 @@ export default function Chat() {
                       <div className="text-xs text-muted-foreground mt-1 font-mono">
                         {m.proposal.changes.length} file{m.proposal.changes.length > 1 ? 's' : ''}: {m.proposal.changes.map((c) => c.path).join(', ')}
                       </div>
+                      <div className="mt-2 flex items-center gap-2 text-xs">
+                        <span className="text-muted-foreground shrink-0">Opens a PR in</span>
+                        {repos.length > 1 ? (
+                          <select
+                            value={target}
+                            onChange={(e) => patchMessage(i, { writeRepo: e.target.value })}
+                            className="max-w-[60%] rounded border border-input bg-background px-1.5 py-0.5 font-mono text-foreground"
+                          >
+                            {repos.map((r) => (
+                              <option key={r.full_name} value={r.full_name}>{r.full_name}</option>
+                            ))}
+                          </select>
+                        ) : (
+                          <span className="font-mono font-medium text-foreground">{target || '—'}</span>
+                        )}
+                      </div>
+                      {crossRepo && (
+                        <p className="text-xs text-amber-600 dark:text-amber-500 mt-1.5">
+                          Heads up — that's a different repo than the one you have open ({repo.full_name}).
+                        </p>
+                      )}
                       {m.prError && <p className="text-xs text-destructive mt-2">{m.prError}</p>}
                       <div className="flex gap-2 mt-3">
-                        <Button size="sm" onClick={() => confirmPr(i)} disabled={m.prPending}>
+                        <Button size="sm" onClick={() => confirmPr(i)} disabled={m.prPending || !target}>
                           {m.prPending ? (
                             <Loader2 className="w-4 h-4 animate-spin" />
                           ) : (
@@ -487,7 +549,8 @@ export default function Chat() {
                         </Button>
                       </div>
                     </div>
-                  )}
+                    );
+                  })()}
                 </div>
               </div>
             )
