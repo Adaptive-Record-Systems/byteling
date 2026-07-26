@@ -12,8 +12,9 @@ import React, { forwardRef, useEffect, useImperativeHandle, useRef } from 'react
  *
  * The clips are flame-on-black, so the same luminance→alpha key the flying flame
  * uses (#btl-spren-alpha) turns the black into REAL transparency — composites
- * over any page colour. The clips are amber (~32°); `hue` rotates off that so the
- * flourish matches whatever colour the lantern flame currently is.
+ * over any page colour. While a flourish plays its colour FREELY SHIFTS through
+ * the spectrum (an animated hue-rotate on the wrapper) — the moment is a little
+ * magical, distinct from the idle flame's steady per-repo tint.
  *
  * While active, `onActiveChange(true)` lets the parent hide the idle flame so the
  * lantern goes dark; `onActiveChange(false)` fires as the return clip lands on
@@ -21,22 +22,25 @@ import React, { forwardRef, useEffect, useImperativeHandle, useRef } from 'react
  *
  * Props:
  *   anchorRef     the lantern wrapper (the flourish anchors to its flame seat)
- *   hue           flame tint (per-repo); rotates off the clip's amber base
  *   enabled       self-schedule rare flourishes (default true)
  *   minMs/maxMs   randomised gap between flourishes (default 15–40 min)
  *   outClip/inClip  the two clip URLs
  *   onActiveChange(bool)  called when the flourish takes over / hands back
+ *
+ * Imperative: ref.play() fires one now (used by a manual trigger for demos).
+ * Live geometry calibration without a rebuild:
+ *   window.__flourishTune = { fx, fy, hm, seatX, seatY }
  */
 
-// ── tuning (calibrated in /flourish-demo.html) ──────────────────────────────
-const CLIP_BASE_HUE = 32;   // the clips' amber hue; tint rotates off this
+// ── tuning (calibrated in /flourish-demo.html or via window.__flourishTune) ──
 const FLAME_FX = 0.5;       // the flame's horizontal position within the clip frame
 const FLAME_FY = 0.6;       // …and vertical (fraction from the top)
 const HEIGHT_MUL = 3.4;     // overlay height as a multiple of the lantern's width
-const DARK_MS = 650;        // lantern fully dark between OUT and IN
-const CLIP_MAX_MS = 5600;   // safety cap per clip if 'ended' never fires
 const SEAT_X = 0.505;       // the lantern flame seat, as a fraction of the wrapper
 const SEAT_Y = 0.70;
+const DARK_MS = 650;        // lantern fully dark between OUT and IN
+const CLIP_MAX_MS = 5600;   // safety cap per clip if 'ended' never fires
+const HUE_CYCLE_MS = 5000;  // one full colour rotation while a flourish plays
 
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 const reducedMotion = () =>
@@ -53,60 +57,68 @@ function onceEnded(video, maxMs) {
 }
 
 export const LanternFlourish = forwardRef(function LanternFlourish(
-  { anchorRef, hue = 200, enabled = true, minMs = 15 * 60 * 1000, maxMs = 40 * 60 * 1000,
+  { anchorRef, enabled = true, minMs = 15 * 60 * 1000, maxMs = 40 * 60 * 1000,
     outClip, inClip, onActiveChange },
   ref
 ) {
+  const outWrapRef = useRef(null);
+  const inWrapRef = useRef(null);
   const outRef = useRef(null);
   const inRef = useRef(null);
   const busyRef = useRef(false);
   const timerRef = useRef(null);
-  const hueRef = useRef(hue);
-  hueRef.current = hue;
 
-  // Anchor a clip so its flame lands on the lantern's flame seat.
-  const place = (videoEl) => {
+  // Anchor a wrapper so its clip's flame lands on the lantern's flame seat. Live
+  // overrides (window.__flourishTune) let you calibrate against the real lantern.
+  const place = (wrapEl) => {
     const el = anchorRef?.current;
-    if (!el || !videoEl) return false;
+    if (!el || !wrapEl) return false;
     const r = el.getBoundingClientRect();
     if (!r.width) return false;
-    const targetX = r.left + r.width * SEAT_X;
-    const targetY = r.top + r.height * SEAT_Y;
-    const h = r.width * HEIGHT_MUL;
+    const T = (typeof window !== 'undefined' && window.__flourishTune) || {};
+    const fx = T.fx ?? FLAME_FX;
+    const fy = T.fy ?? FLAME_FY;
+    const hm = T.hm ?? HEIGHT_MUL;
+    const seatX = T.seatX ?? SEAT_X;
+    const seatY = T.seatY ?? SEAT_Y;
+    const targetX = r.left + r.width * seatX;
+    const targetY = r.top + r.height * seatY;
+    const h = r.width * hm;
     const w = h * (16 / 9);
-    videoEl.style.width = `${w}px`;
-    videoEl.style.height = `${h}px`;
-    videoEl.style.left = `${targetX - FLAME_FX * w}px`;
-    videoEl.style.top = `${targetY - FLAME_FY * h}px`;
-    videoEl.style.filter =
-      `hue-rotate(${hueRef.current - CLIP_BASE_HUE}deg) brightness(1.05) url(#btl-spren-alpha)`;
+    wrapEl.style.width = `${w}px`;
+    wrapEl.style.height = `${h}px`;
+    wrapEl.style.left = `${targetX - fx * w}px`;
+    wrapEl.style.top = `${targetY - fy * h}px`;
     return true;
   };
 
   const play = async () => {
     if (busyRef.current || reducedMotion() || !outClip || !inClip) return;
     const out = outRef.current, inv = inRef.current;
-    if (!out || !inv) return;
+    const outWrap = outWrapRef.current, inWrap = inWrapRef.current;
+    if (!out || !inv || !outWrap || !inWrap) return;
     busyRef.current = true;
+    outWrap.classList.add('btl-spren-live');
+    inWrap.classList.add('btl-spren-live');
     onActiveChange?.(true); // hide the idle flame — the lantern is about to empty
     try {
       // OUT — flame unravels into leaves, streaming up and away.
-      if (place(out)) {
+      if (place(outWrap)) {
         try { out.currentTime = 0; } catch { /* not ready */ }
-        out.style.opacity = '1';
+        outWrap.style.opacity = '1';
         await out.play().catch(() => {});
         await onceEnded(out, CLIP_MAX_MS);
       }
-      out.style.opacity = '0';
+      outWrap.style.opacity = '0';
       out.pause();
 
       // DARK — the lantern is empty for a beat; "it left."
       await wait(DARK_MS);
 
       // IN — a ribbon descends and settles back into the flame.
-      if (place(inv)) {
+      if (place(inWrap)) {
         try { inv.currentTime = 0; } catch { /* not ready */ }
-        inv.style.opacity = '1';
+        inWrap.style.opacity = '1';
         await inv.play().catch(() => {});
         await onceEnded(inv, CLIP_MAX_MS);
       }
@@ -114,9 +126,11 @@ export const LanternFlourish = forwardRef(function LanternFlourish(
       // over it so the swap is invisible.
       onActiveChange?.(false);
       await wait(200);
-      inv.style.opacity = '0';
+      inWrap.style.opacity = '0';
       inv.pause();
     } finally {
+      outWrap.classList.remove('btl-spren-live');
+      inWrap.classList.remove('btl-spren-live');
       busyRef.current = false;
     }
   };
@@ -141,9 +155,9 @@ export const LanternFlourish = forwardRef(function LanternFlourish(
     return () => { stopped = true; clearTimeout(timerRef.current); };
   }, [enabled, minMs, maxMs]);
 
-  const clipStyle = {
+  const wrapStyle = {
     position: 'fixed', left: 0, top: 0, zIndex: 40, pointerEvents: 'none',
-    opacity: 0, objectFit: 'fill', transition: 'opacity .2s ease', willChange: 'opacity',
+    opacity: 0, transition: 'opacity .2s ease', willChange: 'opacity',
   };
 
   return (
@@ -161,8 +175,33 @@ export const LanternFlourish = forwardRef(function LanternFlourish(
           </feComponentTransfer>
         </filter>
       </svg>
-      {outClip && <video ref={outRef} src={outClip} muted playsInline preload="auto" aria-hidden="true" style={clipStyle} />}
-      {inClip && <video ref={inRef} src={inClip} muted playsInline preload="auto" aria-hidden="true" style={clipStyle} />}
+      {outClip && (
+        <div ref={outWrapRef} className="btl-spren-wrap" aria-hidden="true" style={wrapStyle}>
+          <video ref={outRef} className="btl-spren-clip" src={outClip} muted playsInline preload="auto" />
+        </div>
+      )}
+      {inClip && (
+        <div ref={inWrapRef} className="btl-spren-wrap" aria-hidden="true" style={wrapStyle}>
+          <video ref={inRef} className="btl-spren-clip" src={inClip} muted playsInline preload="auto" />
+        </div>
+      )}
+      <style>{`
+        /* the flame-on-black clip → real transparency; hue-rotate lives on the
+           wrapper so the colour can animate independently of the alpha key */
+        .btl-spren-clip {
+          width: 100%; height: 100%; object-fit: fill; display: block;
+          filter: brightness(1.05) url(#btl-spren-alpha);
+        }
+        /* colour freely shifts through the spectrum while the flourish plays */
+        .btl-spren-wrap.btl-spren-live { animation: btl-spren-hue ${HUE_CYCLE_MS}ms linear infinite; }
+        @keyframes btl-spren-hue {
+          from { filter: hue-rotate(0deg); }
+          to   { filter: hue-rotate(360deg); }
+        }
+        @media (prefers-reduced-motion: reduce) {
+          .btl-spren-wrap.btl-spren-live { animation: none; }
+        }
+      `}</style>
     </>
   );
 });

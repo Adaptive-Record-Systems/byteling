@@ -114,6 +114,7 @@ export default function Chat() {
   const [pulse, setPulse] = useState(null);
   const [idle, setIdle] = useState(false);
   const [flameHidden, setFlameHidden] = useState(false); // idle flame steps out for a video flourish
+  const flourishRef = useRef(null); // imperative: fire the spren flourish on cue (demo/testing)
   const pulseId = useRef(0);
   const firePulse = (kind) => setPulse({ id: (pulseId.current += 1), kind });
   const lanternHue = useMemo(() => hueFromRepo(repo?.full_name), [repo]);
@@ -142,6 +143,19 @@ export default function Chat() {
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' });
   }, [messages, sending, loadingRepo]);
+
+  // Fire the spren flourish on cue — Alt+Shift+F, or window.bytelingFlourish()
+  // from the console. Handy for the demo (it's otherwise rare) and for tuning
+  // the flame's placement/size against the real lantern.
+  useEffect(() => {
+    const trigger = () => flourishRef.current?.play?.();
+    const onKey = (e) => {
+      if (e.altKey && e.shiftKey && (e.key === 'F' || e.key === 'f')) { e.preventDefault(); trigger(); }
+    };
+    window.addEventListener('keydown', onKey);
+    window.bytelingFlourish = trigger;
+    return () => { window.removeEventListener('keydown', onKey); delete window.bytelingFlourish; };
+  }, []);
 
   const blobPaths = useMemo(
     () => (repo?.tree?.tree || []).filter((e) => e.type === 'blob').map((e) => e.path),
@@ -357,8 +371,8 @@ export default function Chat() {
       {/* Rare spren flourish — the flame leaves the lantern as leaves and returns
           as a ribbon. Self-scheduled (15–40 min); hides the idle flame while it runs. */}
       <LanternFlourish
+        ref={flourishRef}
         anchorRef={lanternWrapRef}
-        hue={lanternHue ?? 200}
         outClip={flameToLeaves}
         inClip={ribbonToFlame}
         onActiveChange={setFlameHidden}
