@@ -53,8 +53,13 @@ export const FlyingFlame = forwardRef(function FlyingFlame({ hue = 200, homeRef,
   const flyTo = useCallback(
     async (targetEl, { hold = 1300 } = {}) => {
       if (!targetEl || busy.current) return;
+      // Never fly to a stale target: it must still be in the live DOM (not
+      // removed / navigated away) and actually within the viewport — otherwise
+      // the flame shoots at where something used to be.
+      if (typeof document !== 'undefined' && !document.contains(targetEl)) return;
       const t = targetEl.getBoundingClientRect?.();
-      if (!t || !t.width) return;
+      if (!t || !t.width || !t.height) return;
+      if (t.bottom < 0 || t.top > window.innerHeight || t.right < 0 || t.left > window.innerWidth) return;
       busy.current = true;
 
       const pad = 6;

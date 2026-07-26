@@ -277,8 +277,11 @@ function EmbedApp({ hue, dockSize: initialDockSize }) {
       const lc = lastClickRef.current;
       if (!lc || lc.commented || Date.now() - lc.at > POKE_MS) return;
       if (Math.random() < 0.5) return; // keep it a surprise, not every tick
-      const r = lc.el?.getBoundingClientRect?.();
-      if (!r || r.width < 4) return; // gone or off-screen
+      // Only if that element is STILL live and on screen — otherwise you clicked
+      // it, then scrolled/navigated, and the flame would shoot at a stale spot.
+      if (!lc.el || (typeof document !== 'undefined' && !document.contains(lc.el))) { lastClickRef.current = null; return; }
+      const r = lc.el.getBoundingClientRect();
+      if (!r.width || r.bottom < 0 || r.top > window.innerHeight || r.right < 0 || r.left > window.innerWidth) return; // off-screen
       lc.commented = true;
       flyRef.current?.flyTo(lc.el, { hold: 1100 });
       setMessages((m) => [...m, { role: 'assistant', text: pokeComment(lc.label) }]);
