@@ -11,7 +11,7 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
 import {
   Loader2, Send, FileCode, Plus, X, GitBranch, AlertTriangle, Settings, FolderGit2,
-  GitPullRequest, ExternalLink, Puzzle, LogOut, Paperclip
+  GitPullRequest, ExternalLink, Puzzle, LogOut, Paperclip, Monitor
 } from 'lucide-react';
 import { useAuth } from '@/lib/AuthContext';
 import { Lantern, FlameMark, hueFromRepo } from '@/components/Lantern';
@@ -223,6 +223,42 @@ export default function Chat() {
     const paths = blobPaths.slice(0, MAX_TREE_LINES);
     const tree_text = paths.join('\n') + (blobPaths.length > MAX_TREE_LINES ? `\n… (${blobPaths.length - MAX_TREE_LINES} more)` : '');
     return { tree_text, files: contextFiles.map((f) => ({ path: f.path, content: f.content })) };
+  };
+
+  // "Let Byte see my screen" — the browser's screen-share permission picker.
+  // The user chooses what to share; we grab one frame, downscale it, and attach
+  // it as the screenshot. Tracks are stopped immediately (a snapshot, not a feed).
+  const captureScreen = async () => {
+    if (!navigator.mediaDevices?.getDisplayMedia) {
+      setChatError("Screen capture isn't supported in this browser — paste a screenshot instead.");
+      return;
+    }
+    let stream;
+    try {
+      stream = await navigator.mediaDevices.getDisplayMedia({ video: true });
+    } catch (e) {
+      if (e?.name !== 'NotAllowedError' && e?.name !== 'AbortError') setChatError('Could not start screen capture.');
+      return; // user cancelled the picker
+    }
+    try {
+      const video = document.createElement('video');
+      video.srcObject = stream;
+      await video.play();
+      await new Promise((r) => setTimeout(r, 250)); // let a frame land
+      const maxW = 1600;
+      const vw = video.videoWidth || maxW;
+      const vh = video.videoHeight || 900;
+      const scale = Math.min(1, maxW / vw);
+      const canvas = document.createElement('canvas');
+      canvas.width = Math.round(vw * scale);
+      canvas.height = Math.round(vh * scale);
+      canvas.getContext('2d').drawImage(video, 0, 0, canvas.width, canvas.height);
+      setImage(canvas.toDataURL('image/jpeg', 0.85));
+    } catch {
+      setChatError('Could not capture the screen.');
+    } finally {
+      stream.getTracks().forEach((t) => t.stop());
+    }
   };
 
   const send = async () => {
@@ -492,6 +528,14 @@ export default function Chat() {
                 onChange={async (e) => { const url = await readImageFile(e.target.files?.[0]); if (url) setImage(url); e.target.value = ''; }}
               />
             </label>
+            <button
+              type="button"
+              onClick={captureScreen}
+              className="h-auto py-2 px-2 rounded-md text-muted-foreground hover:text-foreground hover:bg-muted flex items-center"
+              title="Let Byte-ling see your screen — you pick what to share"
+            >
+              <Monitor className="w-4 h-4" />
+            </button>
             <Textarea
               ref={composerRef}
               placeholder={image ? 'Ask about this screenshot…' : (repo ? `Ask about ${repo.full_name}…` : 'Ask Byte-ling to open a repo, or describe one…')}
