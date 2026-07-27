@@ -222,7 +222,12 @@ export default function Chat() {
     patchMessage(idx, { prPending: true, prError: null });
     try {
       const res = await openPr({ repoFullName: target, ...m.proposal });
-      patchMessage(idx, { prResult: res, prPending: false, proposal: null });
+      // Clear the proposal's buttons, then have Byte reply with the PR link so
+      // it reads as "here's your PR" rather than a card silently appearing.
+      setMessages((prev) => [
+        ...prev.map((mm, i) => (i === idx ? { ...mm, prPending: false, proposal: null } : mm)),
+        { role: 'assistant', text: "Done — the PR's up.", prResult: res },
+      ]);
       firePulse('spark'); // a PR landed — bright celebratory flare
     } catch (e) {
       patchMessage(idx, { prError: errInfo(e).message, prPending: false });
