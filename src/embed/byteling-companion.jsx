@@ -97,16 +97,18 @@ function forgetName() {
 }
 
 // Ambient check-in lines — Byte opens up on his own when it's been quiet a
-// while. Kept light and varied so it never reads as a nag.
+// while. Companion first: he's keeping you company, not angling for work. Keep
+// them warm and idle — no pitching code, no "point me at a repo".
 const NUDGES = [
-  "How's it going? What are we working on?",
-  'Need a hand with anything?',
-  "Still here whenever you want to dig into some code.",
-  "What are we building? Point me at a repo and I'll read it.",
+  "How's it going over there?",
+  'Still here — just keeping you company.',
+  "Hope the day's treating you alright.",
+  'No agenda. Just around if you want me.',
+  'Quiet stretch. How are you doing?',
 ];
 function pickNudge(name) {
   const withName = name
-    ? [`Hey ${name} — how's it going? What are we working on?`, `Still here, ${name}. Need a hand with anything?`]
+    ? [`How's it going, ${name}?`, `Still here with you, ${name}.`]
     : [];
   const all = [...withName, ...NUDGES];
   return all[Math.floor(Math.random() * all.length)];
@@ -118,10 +120,10 @@ const IDLE_MS = 5 * 60 * 1000; // quiet for this long → Byte checks in once
 // leaves the browser — credential-blind, and only ever a control's label.
 const POKE_MS = 3 * 60 * 1000;
 const POKES = [
-  (l) => `Poking at "${l}"?`,
-  (l) => `Ah, "${l}" — shout if you want a hand there.`,
   (l) => `Saw you tap "${l}".`,
-  (l) => `"${l}" — want me to dig into that?`,
+  (l) => `"${l}", hm.`,
+  (l) => `Noticed you over by "${l}".`,
+  (l) => `"${l}" — I'm around if you want me.`,
 ];
 function pokeComment(label) {
   return POKES[Math.floor(Math.random() * POKES.length)](label);
