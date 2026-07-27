@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { appParams } from '@/lib/app-params';
 import { base44 } from '@/api/base44Client';
+import { firstNameFrom } from '@/lib/name';
 
 /**
  * Popup landing page for the <byteling-companion> embed's sign-in.
@@ -39,10 +40,11 @@ export default function EmbedAuth() {
         return;
       }
 
-      // First name for the greeting (falls back to the email prefix). Not secret,
-      // but only sent to the opener's exact origin like the token.
-      const name = (me?.full_name || me?.name || '').trim().split(/\s+/)[0]
-        || (me?.email ? me.email.split('@')[0] : '');
+      // First name for the greeting — but never a username/email handle (e.g.
+      // "cfair1911"); firstNameFrom returns '' for those, so the embed passes no
+      // name and Byte doesn't greet by a handle (the user can still state their
+      // real name in chat). Not secret, but only sent to the opener's exact origin.
+      const name = firstNameFrom(me?.full_name || me?.name || '');
 
       if (window.opener && opener) {
         window.opener.postMessage({ type: 'byteling-auth', token, name }, opener);
