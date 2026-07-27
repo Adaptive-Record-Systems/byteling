@@ -361,7 +361,7 @@ export default function Chat() {
     <div className="min-h-screen bg-background flex flex-col">
       {/* The lantern hangs from the top edge — a presence you forget is there
           until the moment you need the corner lit. It reacts to chat events. */}
-      <div ref={lanternWrapRef} className="fixed top-0 right-4 sm:right-8 z-20 pointer-events-none">
+      <div ref={lanternWrapRef} className="fixed top-[150px] right-4 sm:right-8 z-20 pointer-events-none">
         <Lantern mood={lanternMood} pulse={pulse} hue={lanternHue} flameVideo={flameVideo} flameHidden={flameHidden} />
       </div>
 
