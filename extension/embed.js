@@ -222,11 +222,11 @@ Error generating stack: `+o.message+`
         .btl-spren-wrap {
           -webkit-mask:
             linear-gradient(to right,  transparent 0, #000 10%, #000 90%, transparent 100%),
-            linear-gradient(to bottom, transparent 0, #000 6%, #000 84%, transparent 95%);
+            linear-gradient(to bottom, transparent 0, #000 22%, #000 84%, transparent 95%);
           -webkit-mask-composite: source-in;
           mask:
             linear-gradient(to right,  transparent 0, #000 10%, #000 90%, transparent 100%),
-            linear-gradient(to bottom, transparent 0, #000 6%, #000 84%, transparent 95%);
+            linear-gradient(to bottom, transparent 0, #000 22%, #000 84%, transparent 95%);
           mask-composite: intersect;
         }
         /* colour freely shifts through the spectrum while the flourish plays */
