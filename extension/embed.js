@@ -78,10 +78,13 @@ Error generating stack: `+o.message+`
       .btl-flame-img {
         position: absolute;
         left: 50.5%; bottom: 30%;
+        /* Explicit square box (the lantern is square, so 29% w == 29% h). Never
+           uses the video's intrinsic size, which collapses to ~0 when the tab is
+           backgrounded or the element is hidden (every flourish) and would leave
+           the flame permanently scrunched. */
         width: 29%;
-        aspect-ratio: 1 / 1; /* flame assets are square; fixes the video going
-                                scrunched after a background tab drops its size */
-        height: auto;
+        height: 29%;
+        aspect-ratio: 1 / 1;
         object-fit: cover;
         transform: translateX(-50%);
         transform-origin: 50% 100%;
