@@ -115,10 +115,12 @@ function pickNudge(name) {
 }
 const IDLE_MS = 5 * 60 * 1000; // quiet for this long → Byte checks in once
 
-// Ambient "poke": occasionally the flame drifts over to the last control the
-// user clicked and drops a light, curated remark. Fully LOCAL — the label never
-// leaves the browser — credential-blind, and only ever a control's label.
-const POKE_MS = 3 * 60 * 1000;
+// Ambient "poke": now and then, right after you click something, the flame
+// drifts over to it and drops a light remark — a reaction, not a delayed twitch.
+// Fully LOCAL — the label never leaves the browser — credential-blind, label only.
+const POKE_DELAY = 450;         // ms after the click → reads as a reaction, not a lag
+const POKE_COOLDOWN = 90 * 1000; // at most one poke per ~1.5 min
+const POKE_CHANCE = 0.25;        // …and only ~1 in 4 eligible clicks, so it stays a surprise
 const POKES = [
   (l) => `Saw you tap "${l}".`,
   (l) => `"${l}", hm.`,
@@ -240,7 +242,7 @@ function EmbedApp({ hue, dockSize: initialDockSize }) {
   const lastActivityRef = useRef(Date.now()); // for the ambient check-in timer
   const nudgedRef = useRef(false);
   const namePinnedRef = useRef(readNamePinned()); // true once the user states their name
-  const lastClickRef = useRef(null); // { el, label, at, commented } — for the ambient poke
+  const lastPokeAtRef = useRef(0); // when the flame last poked, for the cooldown
 
   // Extension: hydrate the remembered name from chrome.storage.local (async; the
   // extension's own storage, so it survives reload even though the token doesn't).
@@ -314,9 +316,11 @@ function EmbedApp({ hue, dockSize: initialDockSize }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token, name]);
 
-  // Remember the last host-page control the user clicked, for the ambient poke.
-  // Stays entirely local (a ref); credential-blind; label only, never values.
-  // A click is real activity, so it also resets the idle check-in.
+  // Ambient poke: right after you click a host-page control, the flame *sometimes*
+  // drifts over to it and drops a light remark — a prompt reaction (POKE_DELAY),
+  // not a delayed twitch. Kept a surprise with a cooldown + chance, never during a
+  // chat (panel open) or a backgrounded tab. Entirely local: label only, never
+  // values, credential-blind. A click also counts as activity (resets idle).
   useEffect(() => {
     if (!token) return;
     const onClick = (e) => {
@@ -326,35 +330,27 @@ function EmbedApp({ hue, dockSize: initialDockSize }) {
       const label = (el.getAttribute('aria-label') || el.textContent || el.value || el.getAttribute('title') || '')
         .replace(/\s+/g, ' ').trim().slice(0, 48);
       if (!label) return;
-      lastClickRef.current = { el, label, at: Date.now(), commented: false };
       bump();
+
+      // …and now and then, notice it — promptly, so it reads as a reaction.
+      const now = Date.now();
+      if (open) return;                                     // not mid-conversation
+      if (now - lastPokeAtRef.current < POKE_COOLDOWN) return;
+      if (Math.random() > POKE_CHANCE) return;
+      if (typeof document !== 'undefined' && document.visibilityState !== 'visible') return;
+      lastPokeAtRef.current = now;
+      setTimeout(() => {
+        if (!el.isConnected) return;                        // clicked, then it went away
+        const r = el.getBoundingClientRect();
+        if (!r.width || r.bottom < 0 || r.top > window.innerHeight || r.right < 0 || r.left > window.innerWidth) return;
+        flyRef.current?.flyTo(el, { hold: 1100 });
+        setMessages((m) => [...m, { role: 'assistant', text: pokeComment(label) }]);
+        fire('drift');
+      }, POKE_DELAY);
     };
     document.addEventListener('click', onClick, true);
     return () => document.removeEventListener('click', onClick, true);
-  }, [token]);
-
-  // Ambient poke: now and then, drift the flame over to the thing they just
-  // clicked and drop a light remark. Occasional (not clockwork), only on a fresh
-  // click, only if it's still on screen, never into a backgrounded tab.
-  useEffect(() => {
-    if (!token) return;
-    const iv = setInterval(() => {
-      if (typeof document !== 'undefined' && document.visibilityState !== 'visible') return;
-      const lc = lastClickRef.current;
-      if (!lc || lc.commented || Date.now() - lc.at > POKE_MS) return;
-      if (Math.random() < 0.5) return; // keep it a surprise, not every tick
-      // Only if that element is STILL live and on screen — otherwise you clicked
-      // it, then scrolled/navigated, and the flame would shoot at a stale spot.
-      if (!lc.el || (typeof document !== 'undefined' && !document.contains(lc.el))) { lastClickRef.current = null; return; }
-      const r = lc.el.getBoundingClientRect();
-      if (!r.width || r.bottom < 0 || r.top > window.innerHeight || r.right < 0 || r.left > window.innerWidth) return; // off-screen
-      lc.commented = true;
-      flyRef.current?.flyTo(lc.el, { hold: 1100 });
-      setMessages((m) => [...m, { role: 'assistant', text: pokeComment(lc.label) }]);
-      fire('drift');
-    }, POKE_MS);
-    return () => clearInterval(iv);
-  }, [token]);
+  }, [token, open]);
 
   const clearToken = () => {
     setToken(null);
