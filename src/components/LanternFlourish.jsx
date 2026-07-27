@@ -37,7 +37,7 @@ const FLAME_FX = 0.5;       // the flame's horizontal position within the clip f
 const FLAME_FY = 0.80;      // flame sits ~80% down the clip (leaves rise into the space above) — read off the source clip
 const HEIGHT_MUL = 2.5;     // overlay height as a multiple of the lantern's width — calibrated
 const SEAT_X = 0.505;       // the lantern flame seat, as a fraction of the wrapper
-const SEAT_Y = 0.70;
+const SEAT_Y = 0.62;        // anchor the flame a touch higher on the lantern (was 0.70)
 const DARK_MS = 650;        // lantern fully dark between OUT and IN
 const CLIP_MAX_MS = 5600;   // safety cap per clip if 'ended' never fires
 const HUE_CYCLE_MS = 5000;  // one full colour rotation while a flourish plays
@@ -185,7 +185,7 @@ export const LanternFlourish = forwardRef(function LanternFlourish(
                     0 0 1 0 0
                     0.4 0.6 0.5 0 0" />
           <feComponentTransfer>
-            <feFuncA type="gamma" amplitude="1.15" exponent="1.5" offset="0" />
+            <feFuncA type="gamma" amplitude="1.15" exponent="1.8" offset="0" />
           </feComponentTransfer>
         </filter>
       </svg>
@@ -205,15 +205,20 @@ export const LanternFlourish = forwardRef(function LanternFlourish(
         .btl-spren-clip {
           width: 100%; height: 100%; object-fit: fill; display: block;
           filter: brightness(1.05) url(#btl-spren-alpha);
-          /* Feather all four edges to transparency so the rectangular video frame
-             never shows a hard box — leaves just soften out as they reach it. */
+        }
+        /* Feather the frame edges to transparency so the rectangular video frame
+           never shows a hard box. The mask lives on the WRAPPER (a div) — masks on
+           a <video> are unreliable, which left the box hard. The bottom fades in
+           early (below the flame) to crop the clip's floor reflection; the top
+           fades so rising leaves soften out as they leave the frame. */
+        .btl-spren-wrap {
           -webkit-mask:
-            linear-gradient(to right,  transparent 0, #000 8%, #000 92%, transparent 100%),
-            linear-gradient(to bottom, transparent 0, #000 7%, #000 93%, transparent 100%);
+            linear-gradient(to right,  transparent 0, #000 10%, #000 90%, transparent 100%),
+            linear-gradient(to bottom, transparent 0, #000 6%, #000 84%, transparent 95%);
           -webkit-mask-composite: source-in;
           mask:
-            linear-gradient(to right,  transparent 0, #000 8%, #000 92%, transparent 100%),
-            linear-gradient(to bottom, transparent 0, #000 7%, #000 93%, transparent 100%);
+            linear-gradient(to right,  transparent 0, #000 10%, #000 90%, transparent 100%),
+            linear-gradient(to bottom, transparent 0, #000 6%, #000 84%, transparent 95%);
           mask-composite: intersect;
         }
         /* colour freely shifts through the spectrum while the flourish plays */
