@@ -24,7 +24,11 @@ import Anthropic from 'npm:@anthropic-ai/sdk';
  */
 
 const MODEL = 'claude-opus-4-8';
-const MAX_TOKENS = 8192;
+// Opening a PR means emitting the COMPLETE new content of each changed file
+// inline (shared with adaptive thinking), so 8192 truncated real files — the
+// tool call came back incomplete and the SDK threw parsing it ("could not
+// respond"). Give it room so full-file PRs fit.
+const MAX_TOKENS = 32000;
 const HISTORY_LIMIT = 30; // recent turns replayed for continuity
 
 // Deep-dive: Byteling can pull file contents itself (read_files tool), fetched
@@ -672,6 +676,9 @@ Deno.serve(async (req) => {
     });
   } catch (error) {
     console.error('claude-chat failed:', error);
-    return Response.json({ error: 'The assistant could not respond' }, { status: 500 });
+    // Surface a short hint so the client (and we) can tell truncation from an
+    // overload/network error next time, without dumping internals.
+    const detail = (error instanceof Error ? error.message : String(error)).slice(0, 180);
+    return Response.json({ error: 'The assistant could not respond', detail }, { status: 500 });
   }
 });
