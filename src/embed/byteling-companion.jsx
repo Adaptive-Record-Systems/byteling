@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { Lantern, FlameMark } from '@/components/Lantern';
 import { FlyingFlame } from '@/components/FlyingFlame';
+import { LanternFlourish } from '@/components/LanternFlourish';
 import { extractName } from '@/lib/name';
 
 // The <script> tag that loaded this bundle — captured at load so auto-mount can
@@ -228,10 +229,12 @@ function EmbedApp({ hue, dockSize: initialDockSize }) {
   const [pickerOpen, setPickerOpen] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const [repoError, setRepoError] = useState(null);
+  const [flameHidden, setFlameHidden] = useState(false); // idle flame steps out for a video flourish
   const idRef = useRef(0);
   const scrollRef = useRef(null);
   const dockRef = useRef(null);  // the docked lantern — where the flame launches from
   const flyRef = useRef(null);   // FlyingFlame handle: flyRef.current.flyTo(hostEl)
+  const flourishRef = useRef(null); // imperative: fire the spren flourish on cue
   const lastActivityRef = useRef(Date.now()); // for the ambient check-in timer
   const nudgedRef = useRef(false);
   const namePinnedRef = useRef(readNamePinned()); // true once the user states their name
@@ -260,6 +263,15 @@ function EmbedApp({ hue, dockSize: initialDockSize }) {
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' });
   }, [messages, sending]);
+
+  // Fire the spren flourish on cue from the host page — window.bytelingFlourish()
+  // — so it can be triggered on demand for a demo (it's otherwise rare) or to
+  // calibrate placement against the real dock.
+  useEffect(() => {
+    const trigger = () => flourishRef.current?.play?.();
+    try { window.bytelingFlourish = trigger; } catch { /* ignore */ }
+    return () => { try { if (window.bytelingFlourish === trigger) delete window.bytelingFlourish; } catch { /* ignore */ } };
+  }, []);
 
   // Receive the access token from the sign-in popup (posted to our origin).
   useEffect(() => {
@@ -768,13 +780,23 @@ function EmbedApp({ hue, dockSize: initialDockSize }) {
         aria-label={unlocked ? 'Drag to move Byte-ling' : (open ? 'Close Byte-ling' : 'Open Byte-ling')}
         title={unlocked ? 'Drag to move · use the slider to resize' : 'Byte-ling'}
       >
-        <Lantern mood={mood} pulse={pulse} hue={hue} size={dockSize} />
+        <Lantern mood={mood} pulse={pulse} hue={hue} size={dockSize} flameHidden={flameHidden} />
       </button>
 
       {/* The flame can leave the lantern to point at controls on the host page.
           The comet clip is served from the Byte-ling origin (not inlined into
           embed.js); FlyingFlame falls back to the still flame if it 404s. */}
       <FlyingFlame ref={flyRef} hue={hue ?? 200} homeRef={dockRef} comet={`${BYTELING_BASE}/flame-comet.mp4`} />
+
+      {/* Rare spren flourish — flame leaves the lantern as leaves and returns as
+          a ribbon. Clips served from the Byte-ling origin (same as the comet). */}
+      <LanternFlourish
+        ref={flourishRef}
+        anchorRef={dockRef}
+        outClip={`${BYTELING_BASE}/flame-to-leaves.mp4`}
+        inClip={`${BYTELING_BASE}/ribbon-to-flame.mp4`}
+        onActiveChange={setFlameHidden}
+      />
 
       <EmbedStyles />
     </div>
