@@ -450,7 +450,12 @@ function EmbedApp({ hue, dockSize: initialDockSize }) {
     patch(idx, { prPending: true });
     try {
       const d = await callFn('github-pr', { repo_full_name: target, ...proposal }, token);
-      patch(idx, { prPending: false, prResult: d, proposal: null });
+      // Clear the proposal's buttons, then have Byte reply with the PR link so
+      // it reads as "here's your PR" rather than a card silently appearing.
+      setMessages((m) => [
+        ...m.map((x, i) => (i === idx ? { ...x, prPending: false, proposal: null } : x)),
+        { role: 'assistant', text: "Done — the PR's up.", prResult: d },
+      ]);
       fire('spark');
     } catch (e) {
       patch(idx, { prPending: false, prError: e.message || 'Could not open the PR.' });
