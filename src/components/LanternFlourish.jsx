@@ -47,6 +47,20 @@ const reducedMotion = () =>
   typeof window !== 'undefined' && window.matchMedia &&
   window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
+// "Ask Byte to do a flourish" — a chat message that's really a request to
+// perform, so the client fires the flourish directly (deterministic, instant,
+// no round-trip) rather than leaving it to the model.
+const FLOURISH_RE = /\b(do (a|your|the) (little )?(flourish|trick|dance|twirl|spin)|(a )?flourish\b|dance for me|dance for us|show me (some )?(magic|a trick|your magic|something)|show off|twirl|spin for me|come alive|do your thing|do something (magical|pretty|cool))\b/i;
+export function isFlourishRequest(text) {
+  return FLOURISH_RE.test((text || '').trim());
+}
+// A short, in-character line to say while performing (understated — no
+// exclamation, no mascot energy, matching Byte's voice).
+const FLOURISH_LINES = ['Watch this.', 'For you —', 'A little light.', 'Since you asked.', 'Like this?', 'Mm — here.'];
+export function flourishLine() {
+  return FLOURISH_LINES[Math.floor(Math.random() * FLOURISH_LINES.length)];
+}
+
 function onceEnded(video, maxMs) {
   return new Promise((resolve) => {
     let done = false;
