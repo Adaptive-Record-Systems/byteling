@@ -18,7 +18,7 @@ import { extractName, firstNameFrom } from '@/lib/name';
 import { Lantern, FlameMark, hueFromRepo } from '@/components/Lantern';
 import { FlyingFlame } from '@/components/FlyingFlame';
 import { SprenFlourish } from '@/components/SprenFlourish';
-import { LanternFlourish } from '@/components/LanternFlourish';
+import { LanternFlourish, isFlourishRequest, flourishLine } from '@/components/LanternFlourish';
 import flameVideo from '@/assets/lantern/Flame_idle.mp4';
 import cometVideo from '@/assets/lantern/flame-comet.mp4';
 import flameToLeaves from '@/assets/lantern/flame-to-leaves.mp4';
@@ -301,6 +301,15 @@ export default function Chat() {
     const text = input.trim();
     if ((!text && !image) || sending) return;
     setChatError(null);
+
+    // "Do a flourish" — perform on command. Handled client-side so it's instant
+    // and always fires (no round-trip, not left to the model).
+    if (!image && isFlourishRequest(text)) {
+      setInput('');
+      setMessages((prev) => [...prev, { role: 'user', text }, { role: 'assistant', text: flourishLine() }]);
+      flourishRef.current?.play?.();
+      return;
+    }
 
     // If they tell Byte their name, remember it (over the login name) and pin it.
     const stated = extractName(text);

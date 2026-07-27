@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { Lantern, FlameMark } from '@/components/Lantern';
 import { FlyingFlame } from '@/components/FlyingFlame';
-import { LanternFlourish } from '@/components/LanternFlourish';
+import { LanternFlourish, isFlourishRequest, flourishLine } from '@/components/LanternFlourish';
 import { extractName } from '@/lib/name';
 
 // The <script> tag that loaded this bundle — captured at load so auto-mount can
@@ -517,6 +517,17 @@ function EmbedApp({ hue, dockSize: initialDockSize }) {
   const submit = async () => {
     const text = input.trim();
     if ((!text && !image) || sending) return;
+
+    // "Do a flourish" — perform on command, client-side (instant, and works even
+    // signed out, so it's a safe demo trigger).
+    if (!image && isFlourishRequest(text)) {
+      bump();
+      setInput('');
+      setMessages((m) => [...m, { role: 'user', text }, { role: 'assistant', text: flourishLine() }]);
+      flourishRef.current?.play?.();
+      return;
+    }
+
     if (!token) { signIn(); return; }
     bump();
 
