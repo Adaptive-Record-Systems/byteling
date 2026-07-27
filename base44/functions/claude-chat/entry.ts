@@ -211,10 +211,12 @@ Deno.serve(async (req) => {
     }
     const apiKey = providerKey.api_key;
 
-    // Reasoning depth is a per-user setting on their key (default high — the
-    // recommended minimum for code work on Opus 4.8). Falls back if unset/invalid.
+    // Reasoning depth is a per-user setting on their key. Default 'medium' —
+    // Byte is a companion first, so snappy replies matter more than max depth on
+    // ordinary chat; users who want deeper code reasoning can set 'high'/'xhigh'
+    // on their key. Falls back if unset/invalid.
     const ALLOWED_EFFORT = ['low', 'medium', 'high', 'xhigh', 'max'];
-    const effort = ALLOWED_EFFORT.includes(providerKey.effort) ? providerKey.effort : 'high';
+    const effort = ALLOWED_EFFORT.includes(providerKey.effort) ? providerKey.effort : 'medium';
 
     let body: Record<string, unknown> = {};
     try {
