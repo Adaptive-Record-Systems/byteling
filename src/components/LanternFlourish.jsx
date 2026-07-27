@@ -191,6 +191,16 @@ export const LanternFlourish = forwardRef(function LanternFlourish(
         .btl-spren-clip {
           width: 100%; height: 100%; object-fit: fill; display: block;
           filter: brightness(1.05) url(#btl-spren-alpha);
+          /* Feather all four edges to transparency so the rectangular video frame
+             never shows a hard box — leaves just soften out as they reach it. */
+          -webkit-mask:
+            linear-gradient(to right,  transparent 0, #000 8%, #000 92%, transparent 100%),
+            linear-gradient(to bottom, transparent 0, #000 7%, #000 93%, transparent 100%);
+          -webkit-mask-composite: source-in;
+          mask:
+            linear-gradient(to right,  transparent 0, #000 8%, #000 92%, transparent 100%),
+            linear-gradient(to bottom, transparent 0, #000 7%, #000 93%, transparent 100%);
+          mask-composite: intersect;
         }
         /* colour freely shifts through the spectrum while the flourish plays */
         .btl-spren-wrap.btl-spren-live { animation: btl-spren-hue ${HUE_CYCLE_MS}ms linear infinite; }
