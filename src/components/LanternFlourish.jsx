@@ -34,7 +34,7 @@ import React, { forwardRef, useEffect, useImperativeHandle, useRef } from 'react
 
 // ── tuning (calibrated in /flourish-demo.html or via window.__flourishTune) ──
 const FLAME_FX = 0.5;       // the flame's horizontal position within the clip frame
-const FLAME_FY = 0.15;      // …and vertical (fraction from the top) — calibrated on-screen
+const FLAME_FY = 0.80;      // flame sits ~80% down the clip (leaves rise into the space above) — read off the source clip
 const HEIGHT_MUL = 2.5;     // overlay height as a multiple of the lantern's width — calibrated
 const SEAT_X = 0.505;       // the lantern flame seat, as a fraction of the wrapper
 const SEAT_Y = 0.70;
