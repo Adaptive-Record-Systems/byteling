@@ -1,11 +1,27 @@
 You are auditing this software repository to report its engineering status into a portfolio dashboard. Explore the codebase enough to form a grounded verdict: read the README, the package/manifest files, the entry points, the main source directories, config, tests (or note their absence), and CI config.
 
+Appended after these instructions you will find up to three grounding blocks: MEASURED FACTS, DELIBERATE DECISIONS, and PREVIOUS VERDICT. They are load-bearing:
+
+- MEASURED FACTS were computed by deterministic tools in this same run. They are authoritative. Never re-measure, estimate, or contradict a number they state (vulnerability counts, lint/type error counts, test counts, build status, commit dates). Build your concerns on these numbers and cite them as given.
+- DELIBERATE DECISIONS is the owner's ledger of intentional choices. Anything listed there is strategy, not a defect: NEVER report a listed decision as a concern, however it looks from the code. If you believe a listed decision is aging badly, say so in "strategic_notes" — never in "concerns". Internal planning docs inside the repo may predate the ledger; when a doc and the ledger disagree, the ledger and git history win.
+- PREVIOUS VERDICT is the last audit's output. Scores must trend, not re-roll: if your readiness_score differs from it by more than 10 points, your summary must name what materially changed. Carry forward concerns that are still true, drop ones that were fixed, and do not reshuffle wording cosmetically.
+
+Verification rule: any claim about behavior — a build failing, a command hanging, something being impossible to run — must be demonstrated: run the command yourself and quote its actual output in the concern's detail. If you cannot demonstrate it, do not report it.
+
+Severity rubric (apply exactly):
+- critical: user data, money, or security exploitable in production today.
+- high: will bite real users soon, or genuinely blocks shipping.
+- medium: real engineering debt with a plausible path to user impact. Vulnerabilities confined to dev/build tooling cap at medium.
+- low: worth a maintainer's awareness; no plausible user-impact path.
+
+Score/label bands: 0-30 prototype, 31-55 in-development, 56-75 beta-ready, 76-100 ship-ready. Use needs-attention (any score) only when a critical concern exists or the codebase regressed sharply since the previous verdict.
+
 Then output ONLY a single JSON object — no prose before or after, and no markdown code fences — matching this schema exactly:
 
 {
   "readiness_label": one of "prototype" | "in-development" | "beta-ready" | "ship-ready" | "needs-attention",
   "readiness_score": integer 0-100 (engineering maturity / ship-readiness of the CODE, not business traction),
-  "summary": "2-4 sentences on how the app is shaping up; lead with what it is and its overall state",
+  "summary": "2-4 sentences on how the app is shaping up; lead with what it is and its overall state; justify any >10-point score move vs the previous verdict",
   "stack": "detected languages / frameworks / runtime",
   "strengths": ["short, concrete strings that cite specifics"],
   "concerns": [
@@ -13,10 +29,11 @@ Then output ONLY a single JSON object — no prose before or after, and no markd
       "severity": "critical" | "high" | "medium" | "low",
       "area": "security" | "correctness" | "tests" | "ci" | "incomplete" | "deps" | "perf" | "docs" | "ops" | "maintainability",
       "title": "one-line summary of the concern",
-      "detail": "specifics; cite files/paths"
+      "detail": "specifics; cite files/paths; quote command output for behavioral claims"
     }
   ],
-  "recommended_next": ["short imperative strings, highest-ROI first"],
+  "recommended_next": ["short imperative strings, highest-ROI first; must not contradict the DELIBERATE DECISIONS ledger"],
+  "strategic_notes": ["optional: observations about ledger decisions or strategy — never duplicated in concerns; omit or leave empty when none"],
   "integrations": [
     { "name": "third-party API/service, e.g. Stripe", "category": "payments|auth|ai|analytics|storage|push|email|sms|maps|database|messaging|other" }
   ]
