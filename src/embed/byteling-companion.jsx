@@ -995,9 +995,17 @@ function EmbedStyles() {
   );
 }
 
+// On a phone-sized viewport the docked flame overlays the host app's touch
+// targets and hurts the experience, so we don't mount there for now. Opt back in
+// per-embed with mobile="show" / data-mobile="show" once mobile layout is handled.
+function isMobileViewport() {
+  try { return window.matchMedia('(max-width: 768px)').matches; } catch { return false; }
+}
+
 // Attach a shadow root to `host`, mount React inside it, and return the root.
 // Shared by the custom element and the registry-free path below.
-function renderCompanionInto(host, { hue = null, dockSize = 72 } = {}) {
+function renderCompanionInto(host, { hue = null, dockSize = 72, allowMobile = false } = {}) {
+  if (!allowMobile && isMobileViewport()) return null; // skip on mobile
   const shadow = host.attachShadow({ mode: 'open' });
   const mount = document.createElement('div');
   shadow.appendChild(mount);
@@ -1011,7 +1019,8 @@ class BytelingCompanion extends HTMLElement {
     const hueAttr = this.getAttribute('hue');
     const hue = hueAttr != null && hueAttr !== '' ? Number(hueAttr) : null;
     const dockSize = Number(this.getAttribute('size')) || 72;
-    this._root = renderCompanionInto(this, { hue, dockSize });
+    const allowMobile = this.getAttribute('mobile') === 'show';
+    this._root = renderCompanionInto(this, { hue, dockSize, allowMobile });
   }
 
   disconnectedCallback() {
@@ -1039,10 +1048,15 @@ function autoMount() {
   if (document.querySelector('byteling-companion') || document.querySelector(`[${ROOT_ATTR}]`)) return;
 
   const ds = (SELF_SCRIPT && SELF_SCRIPT.dataset) || {};
+  const allowMobile = ds.mobile === 'show';
+  // Don't even add the element on mobile (unless opted in) — it would just render
+  // nothing, and this avoids a stray empty node in the host page.
+  if (!allowMobile && isMobileViewport()) return;
   if (CE) {
     const el = document.createElement('byteling-companion');
     if (ds.hue) el.setAttribute('hue', ds.hue);
     if (ds.size) el.setAttribute('size', ds.size);
+    if (allowMobile) el.setAttribute('mobile', 'show');
     document.body.appendChild(el);
   } else {
     // No custom-element registry (extension isolated world): mount straight
@@ -1052,7 +1066,7 @@ function autoMount() {
     document.body.appendChild(host);
     const hue = ds.hue != null && ds.hue !== '' ? Number(ds.hue) : null;
     const dockSize = Number(ds.size) || 72;
-    renderCompanionInto(host, { hue, dockSize });
+    renderCompanionInto(host, { hue, dockSize, allowMobile });
   }
 }
 if (typeof document !== 'undefined') {
