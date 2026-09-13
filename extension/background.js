@@ -43,3 +43,28 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
     .catch((e) => sendResponse({ ok: false, error: (e && e.message) || 'capture failed' }));
   return true; // keep the message channel open for the async response
 });
+
+// Design review: grab the visible tab (smaller JPEG to keep the payload light)
+// AND inject the style census into the active tab, returning both. captureVisibleTab
+// and scripting both ride the activeTab grant from the summon click — no extra
+// permission needed. The census file is injected as an IIFE whose return value
+// (a JSON string) is the executeScript result.
+chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
+  if (msg?.type !== 'byteling-design-review') return;
+  (async () => {
+    try {
+      const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+      if (!tab?.id) throw new Error('no active tab');
+      const [shot, censusRes] = await Promise.all([
+        chrome.tabs.captureVisibleTab({ format: 'jpeg', quality: 60 }),
+        chrome.scripting.executeScript({ target: { tabId: tab.id }, files: ['style-census.js'] })
+          .then((r) => (r && r[0] ? r[0].result : null))
+          .catch(() => null), // census is best-effort; screenshot alone still reviews
+      ]);
+      sendResponse({ ok: true, screenshotBase64: shot, census: censusRes || null, url: tab.url || '' });
+    } catch (e) {
+      sendResponse({ ok: false, error: (e && e.message) || 'design review capture failed' });
+    }
+  })();
+  return true; // async response
+});

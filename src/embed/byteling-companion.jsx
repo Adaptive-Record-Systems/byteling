@@ -214,6 +214,57 @@ function scanHostUi() {
   return out;
 }
 
+// "/design" or a natural "review this page" — the Designling trigger.
+const DESIGN_RE = /^\/design\b|\bdesign review\b|\breview (this|my) (page|design|site|screen)\b|\bis (this|my) (page|design|site) (ai|generated|template)\b|\broast (this|my) (design|page|site)\b/i;
+function isDesignReviewRequest(text) { return DESIGN_RE.test((text || '').trim()); }
+
+// Render a design-review verdict inside a bot message. Kept readable on any page.
+function DesignReviewCard({ review }) {
+  const v = review || {};
+  const verdict = v.verdict || 'REVIEW';
+  const cls = verdict === 'AUTHORED' ? 'good' : verdict === 'TEMPLATE SLUDGE' ? 'bad' : 'warn';
+  const tests = v.tests || {};
+  const findings = Array.isArray(v.findings) ? v.findings : [];
+  const sevCls = (s) => (s === 'HIGH' ? 'high' : s === 'MEDIUM' ? 'med' : 'low');
+  const Test = ({ label, t }) => t ? (
+    <div className="btlc-dr-test">
+      <span className={`btlc-dr-chip ${t.pass ? 'good' : 'bad'}`}>{t.pass ? 'PASS' : 'FAIL'}</span>
+      <span className="btlc-dr-testlabel">{label}</span>
+      {t.note && <span className="btlc-dr-testnote">{t.note}</span>}
+    </div>
+  ) : null;
+  return (
+    <div className="btlc-dr">
+      <div className={`btlc-dr-verdict ${cls}`}>{verdict}</div>
+      {v.verdictLine && <div className="btlc-dr-vline">{v.verdictLine}</div>}
+      <div className="btlc-dr-tests">
+        <Test label="Logo-swap" t={tests.logoSwap} />
+        <Test label="Nervous" t={tests.nervous} />
+      </div>
+      {findings.length > 0 && (
+        <div className="btlc-dr-finds">
+          {findings.map((f, i) => (
+            <div key={i} className="btlc-dr-find">
+              <span className={`btlc-dr-sev ${sevCls(f.severity)}`}>{f.severity}</span>
+              <div className="btlc-dr-findbody">
+                <div className="btlc-dr-findtext">{f.finding}</div>
+                {f.evidence && <div className="btlc-dr-ev">{f.evidence}</div>}
+                {f.fix && <div className="btlc-dr-fix">→ {f.fix}</div>}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+      {v.nervousSuggestion && (
+        <div className="btlc-dr-nervous"><b>One nervous move to try:</b> {v.nervousSuggestion}</div>
+      )}
+      {v.nextAction && (
+        <div className="btlc-dr-next"><b>Do first:</b> {v.nextAction}</div>
+      )}
+    </div>
+  );
+}
+
 function EmbedApp({ hue, dockSize: initialDockSize }) {
   const [open, setOpen] = useState(false);
   const [dockSize, setDockSize] = useState(() => readSize(initialDockSize));
@@ -462,6 +513,46 @@ function EmbedApp({ hue, dockSize: initialDockSize }) {
     }
   };
 
+  // Designling: capture the tab + census via the extension worker, send them to
+  // the designReview backend, render the verdict. Extension-only for now (the
+  // capture path lives there); needs a signed-in token like any backend call.
+  const runDesignReview = async () => {
+    if (sending) return;
+    if (!IS_EXTENSION || !(typeof chrome !== 'undefined' && chrome?.runtime?.sendMessage)) {
+      setMessages((m) => [...m, { role: 'user', text: 'Design review' },
+        { role: 'assistant', text: 'Design review runs from the Byte-ling extension for now — summon me on the page you want a look at.', error: true }]);
+      return;
+    }
+    if (!token) { signIn(); return; }
+    bump();
+    if (!open) setOpen(true);
+    setMessages((m) => [...m, { role: 'user', text: 'Design review' }]);
+    setSending(true);
+    fire('notice');
+    try {
+      const cap = await chrome.runtime.sendMessage({ type: 'byteling-design-review' });
+      if (!cap?.ok || (!cap.screenshotBase64 && !cap.census)) {
+        throw new Error(cap?.error || "Couldn't capture this page to review.");
+      }
+      const data = await callFn('designReview', {
+        url: cap.url, census: cap.census, screenshotBase64: cap.screenshotBase64,
+      }, token);
+      setSending(false);
+      fire('spark');
+      if (data.review) {
+        setMessages((m) => [...m, { role: 'assistant', text: "Had a proper look — here's the read:", review: data.review }]);
+      } else {
+        setMessages((m) => [...m, { role: 'assistant', text: 'The review came back empty.', error: true }]);
+      }
+    } catch (e) {
+      setSending(false);
+      const msg = (e?.code === 'no_provider_key' || e?.code === 'invalid_provider_key')
+        ? 'Your Anthropic key needs attention — open Setup to fix it.'
+        : (e?.message || "Couldn't run the design review.");
+      setMessages((m) => [...m, { role: 'assistant', text: msg, error: true }]);
+    }
+  };
+
   // "Let Byte see my screen" — one downscaled frame attached to the next turn.
   const captureScreen = async () => {
     // Extension: one click grabs the visible tab via the background worker
@@ -528,6 +619,15 @@ function EmbedApp({ hue, dockSize: initialDockSize }) {
       setInput('');
       setMessages((m) => [...m, { role: 'user', text }, { role: 'assistant', text: flourishLine() }]);
       flourishRef.current?.play?.();
+      return;
+    }
+
+    // "Design review" / "/design" — Designling mode. Extension captures the tab +
+    // census and the backend returns an art-director verdict. Handled before the
+    // normal chat path (runDesignReview does its own token/extension checks).
+    if (!image && isDesignReviewRequest(text)) {
+      setInput('');
+      runDesignReview();
       return;
     }
 
@@ -627,6 +727,9 @@ function EmbedApp({ hue, dockSize: initialDockSize }) {
 
         {menuOpen && token && (
           <div className="btlc-menu">
+            {IS_EXTENSION && (
+              <button className="btlc-menu-item" onClick={() => { setMenuOpen(false); runDesignReview(); }}>Design review</button>
+            )}
             <button className="btlc-menu-item" onClick={enterUnlock}>Move &amp; resize</button>
             <a className="btlc-menu-item" href={BYTELING_BASE} target="_blank" rel="noreferrer" onClick={() => setMenuOpen(false)}>
               Open Byte-ling ↗
@@ -675,6 +778,7 @@ function EmbedApp({ hue, dockSize: initialDockSize }) {
                 <span className="btlc-ava"><FlameMark hue={hue ?? 42} /></span>
                 <div className="btlc-botcol">
                   {m.text && <div className={`btlc-bubble btlc-bot ${m.error ? 'btlc-err' : ''}`}>{m.text}</div>}
+                  {m.review && <DesignReviewCard review={m.review} />}
                   {m.prResult && (
                     <a className="btlc-prlink" href={m.prResult.pr_url} target="_blank" rel="noreferrer">
                       Opened PR #{m.prResult.number} ↗
@@ -892,6 +996,35 @@ function EmbedStyles() {
       .btlc-prghost:hover { color: #e9e9ee; }
       .btlc-prlink { display: inline-block; font-size: 12.5px; color: #8fb7ff; text-decoration: none; border: 1px solid #33333c; border-radius: 8px; padding: 6px 10px; }
       .btlc-prlink:hover { background: rgba(255,255,255,.05); }
+
+      /* Design review verdict card */
+      .btlc-dr { border: 1px solid #33333c; background: rgba(255,255,255,.03); border-radius: 12px; padding: 11px 12px; display: flex; flex-direction: column; gap: 9px; }
+      .btlc-dr-verdict { align-self: flex-start; font-size: 11px; font-weight: 800; letter-spacing: .08em; padding: 3px 9px; border-radius: 6px; }
+      .btlc-dr-verdict.good { background: rgba(90,190,120,.18); color: #8fe0a8; }
+      .btlc-dr-verdict.warn { background: rgba(210,170,70,.16); color: #e8c37a; }
+      .btlc-dr-verdict.bad  { background: rgba(220,70,70,.16); color: #ffb0b0; }
+      .btlc-dr-vline { font-size: 13px; color: #d7d7de; line-height: 1.45; margin-top: -2px; }
+      .btlc-dr-tests { display: flex; flex-direction: column; gap: 5px; }
+      .btlc-dr-test { display: flex; align-items: baseline; gap: 7px; font-size: 12px; flex-wrap: wrap; }
+      .btlc-dr-chip { font-size: 10px; font-weight: 800; padding: 1px 6px; border-radius: 5px; letter-spacing: .04em; }
+      .btlc-dr-chip.good { background: rgba(90,190,120,.2); color: #8fe0a8; }
+      .btlc-dr-chip.bad  { background: rgba(220,70,70,.2); color: #ffb0b0; }
+      .btlc-dr-testlabel { color: #c7c7cf; font-weight: 600; }
+      .btlc-dr-testnote { color: #9a9aa6; }
+      .btlc-dr-finds { display: flex; flex-direction: column; gap: 8px; border-top: 1px solid #2a2a31; padding-top: 9px; }
+      .btlc-dr-find { display: flex; gap: 8px; align-items: flex-start; }
+      .btlc-dr-sev { flex: 0 0 auto; font-size: 9.5px; font-weight: 800; padding: 2px 6px; border-radius: 5px; margin-top: 1px; letter-spacing: .04em; }
+      .btlc-dr-sev.high { background: rgba(220,70,70,.2); color: #ffb0b0; }
+      .btlc-dr-sev.med  { background: rgba(210,170,70,.18); color: #e8c37a; }
+      .btlc-dr-sev.low  { background: rgba(255,255,255,.08); color: #b8b8c0; }
+      .btlc-dr-findbody { display: flex; flex-direction: column; gap: 2px; }
+      .btlc-dr-findtext { font-size: 12.5px; color: #e4e4e8; line-height: 1.4; }
+      .btlc-dr-ev { font-size: 11.5px; color: #8a8a94; line-height: 1.4; }
+      .btlc-dr-fix { font-size: 11.5px; color: #9fc3ff; line-height: 1.4; }
+      .btlc-dr-nervous { font-size: 12px; color: #d7d7de; line-height: 1.45; border-top: 1px solid #2a2a31; padding-top: 9px; }
+      .btlc-dr-nervous b { color: #f0e6c8; }
+      .btlc-dr-next { font-size: 12.5px; color: #e4e4e8; line-height: 1.45; background: rgba(143,183,255,.08); border-radius: 8px; padding: 7px 9px; }
+      .btlc-dr-next b { color: #9fc3ff; }
       .btlc-x { border: 0; background: transparent; color: #8a8a94; font-size: 20px; cursor: pointer; line-height: 1; padding: 0 4px; }
       .btlc-x:hover { color: #e9e9ee; }
 
