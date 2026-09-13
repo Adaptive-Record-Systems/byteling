@@ -1,6 +1,7 @@
 # Nexus repo audit — TEMPLATE. Copy into a portfolio repo:
-#   this file            -> <repo>/.github/workflows/claude-audit.yml
-#   ../audit-prompt.txt   -> <repo>/.github/audit-prompt.txt
+#   this file                  -> <repo>/.github/workflows/claude-audit.yml
+#   ../audit-prompt.txt        -> <repo>/.github/audit-prompt.txt
+#   ../audit-context-template.md -> <repo>/.github/audit-context.md (then fill it in)
 #
 # Add four GitHub Actions secrets on that repo (Settings -> Secrets and variables -> Actions):
 #   ANTHROPIC_API_KEY    - powers the headless Claude Code audit
@@ -8,8 +9,11 @@
 #   NEXUS_INGEST_SECRET  - same shared ingest secret as your other Nexus integrations
 #   NEXUS_APP_NAME       - this app's EXACT name in the Nexus Apps Registry
 #
-# Note: the claude-code print-mode output shape can change between versions — if the
-# verdict comes through empty, adjust the JSON extraction (r.result) below.
+# Grounded-audit design (2026-09-13): numbers come from TOOLS, not the model —
+# a Measure step computes vulnerability/lint/type/test/build facts and the
+# prompt forbids re-measuring them. The owner's deliberate decisions live in
+# .github/audit-context.md and are never reported as concerns. The previous
+# verdict is fed back in so scores trend instead of dice-rolling.
 name: Nexus repo audit
 
 on:
@@ -17,11 +21,67 @@ on:
     - cron: "0 9 * * 1"   # Mondays 09:00 UTC
   workflow_dispatch: {}
 
+permissions:
+  contents: read
+  actions: read   # lets the run download the previous verdict artifact
+
 jobs:
   audit:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
+
+      # Deterministic ground truth. Everything here is computed by tools; the
+      # model is told these numbers are authoritative and must not re-derive
+      # them. Every probe is best-effort — a missing script just yields no line.
+      - name: Measure ground truth
+        run: |
+          {
+            echo "Measured by deterministic tools on $(date -u +%FT%TZ) at commit ${GITHUB_SHA::7}:"
+            echo "- latest commit: $(git log -1 --format='%h %ci %s' | cut -c1-160)"
+            if [ -f package.json ]; then
+              if npm ci --no-audit --no-fund > /dev/null 2>&1 || npm install --no-audit --no-fund > /dev/null 2>&1; then
+                echo "- dependency install: OK"
+                echo "- npm audit: $(npm audit 2>/dev/null | grep -Eo '[0-9]+ vulnerabilities \([^)]*\)' | head -1 || echo '0 vulnerabilities reported')"
+                if npm run 2>/dev/null | grep -qE '^  build$'; then
+                  if npm run build > /dev/null 2>&1; then
+                    extra=""; [ -d dist ] && extra=" (dist $(du -sh dist 2>/dev/null | cut -f1))"
+                    echo "- build: PASSES$extra"
+                  else
+                    echo "- build: FAILS"
+                  fi
+                fi
+                if [ -x node_modules/.bin/eslint ]; then
+                  echo "- eslint: $(node_modules/.bin/eslint . > /dev/null 2>&1 && echo 'PASSES clean' || node_modules/.bin/eslint . 2>/dev/null | grep -oE '[0-9]+ problems? \([^)]*\)' | tail -1 || echo 'reports problems')"
+                fi
+                if npm run 2>/dev/null | grep -qE '^  typecheck$'; then
+                  echo "- typescript errors: $(npm run typecheck 2>&1 | grep -c 'error TS' || true)"
+                fi
+                echo "- test files: $(git ls-files | grep -cE '\.(test|spec)\.[jt]sx?$' || true)"
+                if [ -x node_modules/.bin/vitest ]; then
+                  echo "- test run: $(node_modules/.bin/vitest run 2>/dev/null | grep -E '^\s*(Test Files|Tests)' | tr -s ' \n' ' ' || echo 'vitest run unavailable')"
+                fi
+              else
+                echo "- dependency install: FAILED (remaining facts limited to static inspection)"
+              fi
+            else
+              echo "- no package.json at repo root (not a Node project; facts limited to git)"
+            fi
+          } > facts.txt 2>/dev/null || true
+          echo "----- measured facts -----"; cat facts.txt
+
+      # Last successful audit's verdict, so this run can trend instead of
+      # re-rolling: score moves >10 must be justified against it.
+      - name: Fetch previous verdict
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          rid=$(gh run list --workflow "claude-audit.yml" --status success -L 1 --json databaseId --jq '.[0].databaseId' 2>/dev/null || true)
+          if [ -n "$rid" ]; then
+            gh run download "$rid" -n audit-verdict -D prev 2>/dev/null && cp prev/verdict.json previous-verdict.json 2>/dev/null || true
+          fi
+          [ -f previous-verdict.json ] && echo "previous verdict fetched (run $rid)" || echo "no previous verdict available"
 
       - name: Run Claude Code audit
         env:
@@ -37,12 +97,24 @@ jobs:
             echo "::error::.github/audit-prompt.txt is missing — copy it from the Nexus repo's docs/repo-audit/audit-prompt.txt into this repo's .github/ folder."
             exit 1
           fi
+          # The prompt is the fixed instructions plus three grounding blocks:
+          # tool-measured facts, the owner's decision ledger, and last week's verdict.
+          CONTEXT_BLOCKS="
+
+          === MEASURED FACTS (computed by tools in this run — authoritative, do not re-measure) ===
+          $(cat facts.txt 2>/dev/null || echo 'none collected this run')
+
+          === DELIBERATE DECISIONS (.github/audit-context.md — owner strategy, never report as concerns) ===
+          $(cat .github/audit-context.md 2>/dev/null || echo 'no ledger in this repo — do not infer strategy gaps; report only concrete code issues')
+
+          === PREVIOUS VERDICT (last successful audit of this repo) ===
+          $(cat previous-verdict.json 2>/dev/null || echo 'none available')"
           # Capture stdout AND stderr so a failure is legible in the log.
           # bypassPermissions lets it use tools non-interactively in CI.
           set +e
           # Haiku 4.5 keeps audit cost ~5x below the default and is ample for a repo
           # readiness scan; bump to claude-sonnet-5 if you want deeper analysis.
-          claude -p "$(cat .github/audit-prompt.txt)" \
+          claude -p "$(cat .github/audit-prompt.txt)$CONTEXT_BLOCKS" \
             --model claude-haiku-4-5 \
             --output-format json \
             --permission-mode bypassPermissions \
@@ -80,6 +152,7 @@ jobs:
           path: |
             verdict.json
             audit.raw.json
+            facts.txt
           if-no-files-found: ignore
 
       - name: Report verdict to Nexus
