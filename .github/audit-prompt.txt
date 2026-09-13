@@ -1,0 +1,25 @@
+You are auditing this software repository to report its engineering status into a portfolio dashboard. Explore the codebase enough to form a grounded verdict: read the README, the package/manifest files, the entry points, the main source directories, config, tests (or note their absence), and CI config.
+
+Then output ONLY a single JSON object — no prose before or after, and no markdown code fences — matching this schema exactly:
+
+{
+  "readiness_label": one of "prototype" | "in-development" | "beta-ready" | "ship-ready" | "needs-attention",
+  "readiness_score": integer 0-100 (engineering maturity / ship-readiness of the CODE, not business traction),
+  "summary": "2-4 sentences on how the app is shaping up; lead with what it is and its overall state",
+  "stack": "detected languages / frameworks / runtime",
+  "strengths": ["short, concrete strings that cite specifics"],
+  "concerns": [
+    {
+      "severity": "critical" | "high" | "medium" | "low",
+      "area": "security" | "correctness" | "tests" | "ci" | "incomplete" | "deps" | "perf" | "docs" | "ops" | "maintainability",
+      "title": "one-line summary of the concern",
+      "detail": "specifics; cite files/paths"
+    }
+  ],
+  "recommended_next": ["short imperative strings, highest-ROI first"],
+  "integrations": [
+    { "name": "third-party API/service, e.g. Stripe", "category": "payments|auth|ai|analytics|storage|push|email|sms|maps|database|messaging|other" }
+  ]
+}
+
+Order concerns most-severe first. Be specific and honest — cite files and paths. Do not invent problems to pad the list; an app in good shape should have few or no concerns. For "integrations", list every third-party API or external service the app actually connects to in the code (payment processors, auth providers, AI/LLM APIs, analytics, storage, push, email/SMS, maps, databases, messaging, etc.) — real integrations only, not ordinary dev dependencies. Never include secrets or token values in the output.
