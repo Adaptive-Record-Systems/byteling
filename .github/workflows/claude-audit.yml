@@ -1,0 +1,104 @@
+# Nexus repo audit — TEMPLATE. Copy into a portfolio repo:
+#   this file            -> <repo>/.github/workflows/claude-audit.yml
+#   ../audit-prompt.txt   -> <repo>/.github/audit-prompt.txt
+#
+# Add four GitHub Actions secrets on that repo (Settings -> Secrets and variables -> Actions):
+#   ANTHROPIC_API_KEY    - powers the headless Claude Code audit
+#   NEXUS_URL            - your Nexus base URL (no trailing /functions)
+#   NEXUS_INGEST_SECRET  - same shared ingest secret as your other Nexus integrations
+#   NEXUS_APP_NAME       - this app's EXACT name in the Nexus Apps Registry
+#
+# Note: the claude-code print-mode output shape can change between versions — if the
+# verdict comes through empty, adjust the JSON extraction (r.result) below.
+name: Nexus repo audit
+
+on:
+  schedule:
+    - cron: "0 9 * * 1"   # Mondays 09:00 UTC
+  workflow_dispatch: {}
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Run Claude Code audit
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: |
+          if [ -z "$ANTHROPIC_API_KEY" ]; then
+            echo "::error::ANTHROPIC_API_KEY secret is not set on this repository."
+            exit 1
+          fi
+          npm install -g @anthropic-ai/claude-code
+          echo "claude version: $(claude --version 2>&1 || echo 'NOT FOUND')"
+          if [ ! -f .github/audit-prompt.txt ]; then
+            echo "::error::.github/audit-prompt.txt is missing — copy it from the Nexus repo's docs/repo-audit/audit-prompt.txt into this repo's .github/ folder."
+            exit 1
+          fi
+          # Capture stdout AND stderr so a failure is legible in the log.
+          # bypassPermissions lets it use tools non-interactively in CI.
+          set +e
+          # Haiku 4.5 keeps audit cost ~5x below the default and is ample for a repo
+          # readiness scan; bump to claude-sonnet-5 if you want deeper analysis.
+          claude -p "$(cat .github/audit-prompt.txt)" \
+            --model claude-haiku-4-5 \
+            --output-format json \
+            --permission-mode bypassPermissions \
+            > audit.raw.json 2> claude.err
+          code=$?
+          set -e
+          echo "claude exit code: $code"
+          echo "----- claude stderr -----"; cat claude.err || true
+          echo "----- claude raw stdout (first 800 chars) -----"; head -c 800 audit.raw.json || true; echo ""
+          # Surface the specific "out of Anthropic credit" case loudly — it's a billing
+          # problem, not a repo problem. Still fail (visible red X) but with a clear reason.
+          if grep -q "Credit balance is too low" audit.raw.json 2>/dev/null; then
+            echo "::error::Anthropic API credit exhausted ('Credit balance is too low'). BILLING issue, not a repo problem: top up at console.anthropic.com/settings/billing, then re-run this workflow. No verdict was sent to Nexus."
+            exit 1
+          fi
+          if [ "$code" -ne 0 ]; then exit "$code"; fi
+          # r.result is the model's final text. Pull the JSON object out of it
+          # (tolerating markdown fences / stray prose) and write the PARSED verdict.
+          node -e "const fs=require('fs');let r={};try{r=JSON.parse(fs.readFileSync('audit.raw.json','utf8'))}catch(e){};let t=(r.result||r.text||'').trim();const m=t.match(/\{[\s\S]*\}/);let v={};try{v=JSON.parse(m?m[0]:t)}catch(e){};fs.writeFileSync('verdict.json',JSON.stringify(v));console.log('parsed verdict keys:',Object.keys(v).join(',')||'(none)');if(!Object.keys(v).length)console.log('RAW result:',(r.result||'').slice(0,600))"
+          # HARDENING: never report a hollow verdict. If the output didn't parse into
+          # a verdict with a readiness_label, fail loudly HERE — otherwise the report
+          # step would post a score-0 row that silently becomes the "latest" audit.
+          node -e "const v=JSON.parse(require('fs').readFileSync('verdict.json','utf8'));process.exit(v && v.readiness_label ? 0 : 1)" || {
+            echo "::error::Audit ran but produced no parseable verdict — NOTHING was sent to Nexus (this guard prevents a false score-0 row). Re-run the workflow; if it repeats, the CLI output shape changed — adjust the extraction above."
+            exit 1
+          }
+
+      # Keep what the model actually said, even on failed runs — verdicts are
+      # otherwise only visible inside Nexus, and the raw output only in this run.
+      - name: Upload verdict artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: audit-verdict
+          path: |
+            verdict.json
+            audit.raw.json
+          if-no-files-found: ignore
+
+      - name: Report verdict to Nexus
+        env:
+          NEXUS_URL: ${{ secrets.NEXUS_URL }}
+          NEXUS_INGEST_SECRET: ${{ secrets.NEXUS_INGEST_SECRET }}
+          NEXUS_APP_NAME: ${{ secrets.NEXUS_APP_NAME || 'Byteling' }} # must match this app's EXACT name on the Nexus Apps Registry card
+        run: |
+          node -e "
+            const fs=require('fs');
+            let v={};try{v=JSON.parse(fs.readFileSync('verdict.json','utf8'))}catch(e){};
+            v.app_name=process.env.NEXUS_APP_NAME;
+            v.repo=process.env.GITHUB_REPOSITORY;
+            v.branch=process.env.GITHUB_REF_NAME||'';
+            v.commit_sha=process.env.GITHUB_SHA||'';
+            v.scanned_at=new Date().toISOString();
+            fs.writeFileSync('payload.json',JSON.stringify(v));
+          "
+          curl -sS -X POST "$NEXUS_URL/functions/ingestRepoAudit" \
+            -H "Content-Type: application/json" \
+            -H "X-ARS-Ingest-Token: $NEXUS_INGEST_SECRET" \
+            --data @payload.json
